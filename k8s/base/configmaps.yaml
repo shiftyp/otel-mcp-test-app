@@ -1,0 +1,128 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: ecommerce
+data:
+  otel-collector-config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+        send_batch_max_size: 2048
+
+      resource:
+        attributes:
+          - key: deployment.environment
+            value: development
+            action: upsert
+          - key: k8s.cluster.name
+            value: k3d-ecommerce
+            action: insert
+
+      attributes:
+        actions:
+          - key: http.url
+            action: update
+            from_attribute: http.target
+          - key: service.namespace
+            value: ecommerce
+            action: insert
+
+    exporters:
+      logging:
+        loglevel: info
+
+      jaeger:
+        endpoint: jaeger:14250
+        tls:
+          insecure: true
+
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+        namespace: ecommerce
+        const_labels:
+          environment: development
+
+      otlp/jaeger:
+        endpoint: jaeger:4317
+        tls:
+          insecure: true
+
+      elasticsearch/traces:
+        endpoints: [http://opensearch:9200]
+        traces_index: otel-traces
+        sending_queue:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+        
+      elasticsearch/metrics:
+        endpoints: [http://opensearch:9200]
+        metrics_index: otel-metrics
+        sending_queue:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+
+      elasticsearch/logs:
+        endpoints: [http://opensearch:9200]
+        logs_index: otel-logs
+        sending_queue:
+          enabled: true
+        retry_on_failure:
+          enabled: true
+
+    extensions:
+      health_check:
+        endpoint: :13133
+      zpages:
+        endpoint: :55679
+      pprof:
+        endpoint: :1777
+
+    service:
+      extensions: [health_check, zpages, pprof]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch, resource, attributes]
+          exporters: [logging, jaeger, otlp/jaeger, elasticsearch/traces]
+        metrics:
+          receivers: [otlp]
+          processors: [batch, resource]
+          exporters: [logging, prometheus, elasticsearch/metrics]
+        logs:
+          receivers: [otlp]
+          processors: [batch, resource]
+          exporters: [logging, elasticsearch/logs]
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: ecommerce
+data:
+  01-schema.sql: |
+    CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        first_name VARCHAR(100),
+        last_name VARCHAR(100),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX idx_users_email ON users(email);
+    CREATE INDEX idx_users_created_at ON users(created_at);

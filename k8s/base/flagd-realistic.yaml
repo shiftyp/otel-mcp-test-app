@@ -1,0 +1,277 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flagd-config-realistic
+  namespace: ecommerce
+data:
+  # Feature flags with hidden bugs:
+  # - distributedCacheMode: "optimized" = cache coherency issues (5% of sessions)
+  # - memoryManagement: "aggressive" = slow memory leak under stress
+  # - inventoryAlgorithm: "fastPath" = race conditions (10% of users)  
+  # - dataFetchStrategy: "parallel" = N+1 query problem for carts > 5 items
+  # - networkResilience: degraded/critical = timeout issues during peak hours
+  # - mobileCorsMode: "relaxed" = CORS corruption for 15% of mobile users
+  # - paginationStrategy: "infinite" = duplicate items after 3rd scroll
+  # - cacheWarmup: "preemptive" = 15% chance of stale data under high load
+  flags.json: |
+    {
+      "flags": {
+        "distributedCacheMode": {
+          "state": "ENABLED",
+          "variants": {
+            "standard": false,
+            "optimized": true
+          },
+          "defaultVariant": "standard",
+          "targeting": {
+            "fractional": [
+              ["sessionId"],
+              ["standard", 95],
+              ["optimized", 5]
+            ]
+          }
+        },
+        "memoryManagement": {
+          "state": "ENABLED",
+          "variants": {
+            "conservative": {
+              "gcInterval": 60000,
+              "poolSize": "normal"
+            },
+            "aggressive": {
+              "gcInterval": 300000,
+              "poolSize": "large"
+            }
+          },
+          "defaultVariant": "conservative",
+          "targeting": {
+            "if": [
+              {
+                "in": ["stress-test", { "var": "testType" }]
+              },
+              "aggressive",
+              "conservative"
+            ]
+          }
+        },
+        "inventoryAlgorithm": {
+          "state": "ENABLED",
+          "variants": {
+            "lockBased": false,
+            "fastPath": true
+          },
+          "defaultVariant": "lockBased",
+          "targeting": {
+            "fractional": [
+              ["userId"],
+              ["lockBased", 90],
+              ["fastPath", 10]
+            ]
+          }
+        },
+        "dataFetchStrategy": {
+          "state": "ENABLED",
+          "variants": {
+            "sequential": false,
+            "parallel": true
+          },
+          "defaultVariant": "sequential",
+          "targeting": {
+            "if": [
+              {
+                "gt": [{ "var": "cartSize" }, 5]
+              },
+              "parallel",
+              "sequential"
+            ]
+          }
+        },
+        "networkResilience": {
+          "state": "ENABLED",
+          "variants": {
+            "standard": {
+              "timeoutMs": 5000,
+              "retries": 3
+            },
+            "degraded": {
+              "timeoutMs": 500,
+              "retries": 1
+            },
+            "minimal": {
+              "timeoutMs": 100,
+              "retries": 0
+            }
+          },
+          "defaultVariant": "standard",
+          "targeting": {
+            "if": [
+              {
+                "and": [
+                  { "gte": [{ "var": "hour" }, 14] },
+                  { "lte": [{ "var": "hour" }, 16] }
+                ]
+              },
+              "degraded",
+              {
+                "if": [
+                  { "gt": [{ "var": "concurrentRequests" }, 50] },
+                  "minimal",
+                  "standard"
+                ]
+              }
+            ]
+          }
+        },
+        "mobileCorsPolicy": {
+          "state": "ENABLED",
+          "variants": {
+            "strict": false,
+            "relaxed": true
+          },
+          "defaultVariant": "strict",
+          "targeting": {
+            "if": [
+              {
+                "contains": [{ "var": "userAgent" }, "Mobile"]
+              },
+              {
+                "fractional": [
+                  ["sessionId"],
+                  ["strict", 85],
+                  ["relaxed", 15]
+                ]
+              },
+              "strict"
+            ]
+          }
+        },
+        "paginationStrategy": {
+          "state": "ENABLED",
+          "variants": {
+            "traditional": false,
+            "infinite": true
+          },
+          "defaultVariant": "traditional",
+          "targeting": {
+            "if": [
+              {
+                "and": [
+                  { "gt": [{ "var": "scrollDepth" }, 3] },
+                  { "contains": [{ "var": "browser" }, "Chrome"] }
+                ]
+              },
+              "infinite",
+              "traditional"
+            ]
+          }
+        },
+        "cacheWarmupStrategy": {
+          "state": "ENABLED",
+          "variants": {
+            "lazy": {
+              "mode": "on-demand",
+              "ttl": 300
+            },
+            "preemptive": {
+              "mode": "background",
+              "ttl": 3600
+            }
+          },
+          "defaultVariant": "lazy",
+          "targeting": {
+            "if": [
+              {
+                "gte": [{ "var": "requestRate" }, 100]
+              },
+              "preemptive",
+              "lazy"
+            ]
+          }
+        },
+        "searchOptimization": {
+          "state": "ENABLED",
+          "variants": {
+            "standard": {
+              "algorithm": "btree",
+              "cacheResults": false
+            },
+            "advanced": {
+              "algorithm": "fuzzy",
+              "cacheResults": true
+            }
+          },
+          "defaultVariant": "standard",
+          "targeting": {
+            "if": [
+              {
+                "contains": [{ "var": "query" }, " "]
+              },
+              "advanced",
+              "standard"
+            ]
+          }
+        },
+        "sessionReplication": {
+          "state": "ENABLED",
+          "variants": {
+            "synchronous": false,
+            "eventual": true
+          },
+          "defaultVariant": "synchronous",
+          "targeting": {
+            "fractional": [
+              ["userId"],
+              ["synchronous", 75],
+              ["eventual", 25]
+            ]
+          }
+        },
+        "renderingMode": {
+          "state": "ENABLED",
+          "variants": {
+            "blocking": {
+              "strategy": "sync",
+              "priority": "high"
+            },
+            "progressive": {
+              "strategy": "async",
+              "priority": "low"
+            }
+          },
+          "defaultVariant": "blocking",
+          "targeting": {
+            "if": [
+              {
+                "gt": [{ "var": "componentCount" }, 20]
+              },
+              "progressive",
+              "blocking"
+            ]
+          }
+        },
+        "apiVersioning": {
+          "state": "ENABLED",
+          "variants": {
+            "v1": {
+              "endpoint": "/api/v1",
+              "compatibility": "full"
+            },
+            "v2": {
+              "endpoint": "/api/v2",
+              "compatibility": "partial"
+            }
+          },
+          "defaultVariant": "v1",
+          "targeting": {
+            "if": [
+              {
+                "in": ["beta", { "var": "userGroup" }]
+              },
+              "v2",
+              "v1"
+            ]
+          }
+        }
+      }
+    }

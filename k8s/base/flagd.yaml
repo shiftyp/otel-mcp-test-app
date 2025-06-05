@@ -1,0 +1,164 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flagd-config
+  namespace: ecommerce
+data:
+  flags.json: |
+    {
+      "flags": {
+        "newCheckoutFlow": {
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off",
+          "targeting": {
+            "if": [
+              {
+                "in": ["beta-users", { "var": "userGroup" }]
+              },
+              "on",
+              "off"
+            ]
+          }
+        },
+        "darkMode": {
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "on"
+        },
+        "recommendationEngine": {
+          "state": "ENABLED",
+          "variants": {
+            "v1": "collaborative",
+            "v2": "content-based",
+            "v3": "hybrid"
+          },
+          "defaultVariant": "v1",
+          "targeting": {
+            "fractional": [
+              ["userId"],
+              ["v1", 60],
+              ["v2", 30],
+              ["v3", 10]
+            ]
+          }
+        },
+        "performanceMode": {
+          "state": "ENABLED",
+          "variants": {
+            "normal": {
+              "cacheTimeout": 300,
+              "prefetch": false
+            },
+            "aggressive": {
+              "cacheTimeout": 3600,
+              "prefetch": true
+            }
+          },
+          "defaultVariant": "normal",
+          "targeting": {
+            "if": [
+              {
+                "ends_with": [{ "var": "userAgent" }, "Mobile"]
+              },
+              "aggressive",
+              "normal"
+            ]
+          }
+        }
+      }
+    }
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flagd
+  namespace: ecommerce
+spec:
+  selector:
+    app: flagd
+  ports:
+    - name: metrics
+      port: 8014
+      targetPort: 8014
+    - name: grpc
+      port: 8013
+      targetPort: 8013
+    - name: sync
+      port: 8015
+      targetPort: 8015
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  namespace: ecommerce
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flagd
+  template:
+    metadata:
+      labels:
+        app: flagd
+    spec:
+      containers:
+        - name: flagd
+          image: ghcr.io/open-feature/flagd:v0.7.3
+          args:
+            - start
+            - --uri
+            - file:/etc/flagd/flags.json
+            - --metrics-exporter
+            - otel
+            - --otel-collector-uri
+            - otel-collector:4317
+          ports:
+            - containerPort: 8013
+              name: grpc
+            - containerPort: 8014
+              name: metrics
+            - containerPort: 8015
+              name: sync
+          env:
+            - name: FLAGD_LOG_LEVEL
+              value: "info"
+            - name: FLAGD_METRICS_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/flagd
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "100m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8014
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8014
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: config
+          configMap:
+            name: flagd-config

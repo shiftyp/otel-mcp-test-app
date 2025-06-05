@@ -1,0 +1,15 @@
+# Ignore test results
+results/
+*.json
+*.csv
+*.log
+
+# Ignore documentation
+*.md
+
+# Ignore temporary files
+*.tmp
+.DS_Store
+
+# Ignore Docker compose files (not needed in image)
+docker-compose*.yml

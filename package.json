@@ -1,0 +1,18 @@
+{
+  "name": "otel-mcp-test-app",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend/angular-app",
+    "backend/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "install:all": "yarn install",
+    "build:observability": "yarn workspace @otel-mcp/angular-observability build",
+    "test:observability": "yarn workspace @otel-mcp/angular-observability test"
+  },
+  "devDependencies": {
+    "typescript": "~5.8.0"
+  }
+}

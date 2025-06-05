@@ -1,0 +1,72 @@
+{
+  "flags": {
+    "distributedCacheMode": {
+      "state": "ENABLED",
+      "variants": {
+        "standard": false,
+        "optimized": true
+      },
+      "defaultVariant": "standard"
+    },
+    "memoryManagement": {
+      "state": "ENABLED",
+      "variants": {
+        "conservative": {
+          "gcInterval": 60000,
+          "poolSize": "normal"
+        },
+        "aggressive": {
+          "gcInterval": 300000,
+          "poolSize": "large"
+        }
+      },
+      "defaultVariant": "conservative"
+    },
+    "paginationStrategy": {
+      "state": "ENABLED",
+      "variants": {
+        "traditional": false,
+        "infinite": true
+      },
+      "defaultVariant": "traditional"
+    },
+    "renderingMode": {
+      "state": "ENABLED",
+      "variants": {
+        "blocking": {
+          "strategy": "sync",
+          "priority": "high"
+        },
+        "progressive": {
+          "strategy": "async",
+          "priority": "low"
+        }
+      },
+      "defaultVariant": "blocking"
+    },
+    "sessionReplication": {
+      "state": "ENABLED",
+      "variants": {
+        "synchronous": false,
+        "eventual": true
+      },
+      "defaultVariant": "synchronous"
+    },
+    "browserTestConfiguration": {
+      "state": "ENABLED",
+      "variants": {
+        "default": {
+          "enableSmokeTest": true,
+          "enableProgressiveLoad": true,
+          "smokeVUs": 1,
+          "progressiveStages": [
+            { "duration": "1m", "target": 3 },
+            { "duration": "3m", "target": 5 },
+            { "duration": "1m", "target": 0 }
+          ]
+        }
+      },
+      "defaultVariant": "default"
+    }
+  }
+}

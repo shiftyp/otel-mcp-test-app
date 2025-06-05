@@ -1,0 +1,48 @@
+{
+  "name": "user-service",
+  "version": "1.0.0",
+  "description": "User management service for e-commerce platform",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node src/server.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "user",
+    "ecommerce",
+    "nodejs",
+    "typescript",
+    "postgresql",
+    "redis",
+    "opentelemetry"
+  ],
+  "author": "Cascade AI",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "redis": "^4.6.13",
+    "@opentelemetry/api": "^1.8.0",
+    "@opentelemetry/sdk-node": "^0.51.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.45.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.51.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.51.0",
+    "@opentelemetry/exporter-logs-otlp-http": "^0.51.0",
+    "dotenv": "^16.4.5",
+    "bcrypt": "^5.1.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "ts-node": "^10.9.2",
+    "@types/express": "^4.17.21",
+    "@types/pg": "^8.11.6",
+    "@types/redis": "^4.0.11",
+    "@types/node": "^20.12.12",
+    "@types/dotenv": "^8.2.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/uuid": "^9.0.8"
+  }
+}

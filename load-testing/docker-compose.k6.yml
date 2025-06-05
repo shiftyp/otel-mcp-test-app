@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  k6-browser-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      # Target URLs - adjust based on your setup
+      BASE_URL: ${BASE_URL:-http://host.docker.internal:4200}
+      FLAGD_URL: ${FLAGD_URL:-http://host.docker.internal:8013}
+      FLAGD_BROWSER_URL: ${FLAGD_BROWSER_URL:-http://host.docker.internal:8014}
+      USERS_API: ${USERS_API:-http://host.docker.internal:3001/api/users}
+      PRODUCTS_API: ${PRODUCTS_API:-http://host.docker.internal:3002/api/products}
+      
+      # Test configuration
+      TEST_TYPE: ${TEST_TYPE:-load}
+      ENVIRONMENT: ${ENVIRONMENT:-docker}
+      K6_BROWSER_HEADLESS: ${K6_BROWSER_HEADLESS:-true}
+      
+      # K6 options
+      K6_VUS: ${K6_VUS:-5}
+      K6_DURATION: ${K6_DURATION:-5m}
+      K6_OUT: "json=/results/test-results-${TEST_TYPE:-load}-$(date +%Y%m%d-%H%M%S).json"
+    
+    volumes:
+      # Mount test scripts
+      - ./k6-scripts:/scripts:ro
+      # Mount results directory
+      - ./results:/results
+    
+    # Use host network mode for better performance and to access host services
+    network_mode: "host"
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    
+    # Override command based on test type
+    command: >
+      run
+      --out json=/results/test-results.json
+      --out csv=/results/test-results.csv
+      --summary-export=/results/summary.json
+      /scripts/unified-browser-test.js
+  
+  k6-api-test:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      BASE_URL: ${BASE_URL:-http://host.docker.internal}
+      FLAGD_URL: ${FLAGD_URL:-http://host.docker.internal:8013}
+      TEST_TYPE: ${TEST_TYPE:-load}
+      ENVIRONMENT: ${ENVIRONMENT:-docker}
+    
+    volumes:
+      - ./k6-scripts:/scripts:ro
+      - ./results:/results
+    
+    network_mode: "host"
+    
+    command: >
+      run
+      --out json=/results/api-test-results.json
+      --out csv=/results/api-test-results.csv
+      --summary-export=/results/api-summary.json
+      /scripts/dynamic-load-test.js
