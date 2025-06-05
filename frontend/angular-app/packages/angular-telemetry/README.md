@@ -341,49 +341,6 @@ interface SignalTelemetryOptions<T> {
 }
 ```
 
-## Migration Guide: From Service to Decorators
-
-### Before (Service-based)
-```typescript
-export class ProductService {
-  private telemetry = inject(DefaultTelemetryService);
-  
-  products = this.telemetry.createTracedSignal([], 'products');
-  
-  async loadProducts() {
-    return this.telemetry.withSpan('load-products', async () => {
-      const products = await this.api.getProducts();
-      this.products.set(products);
-      this.telemetry.recordMetric('products.loaded', products.length);
-      return products;
-    });
-  }
-}
-```
-
-### After (Decorator-based)
-```typescript
-@Telemetry({
-  spanName: 'product-service',
-  metrics: { 'products.loaded': 'counter' }
-})
-export class ProductService {
-  @Traced({ spanName: 'products' })
-  products = signal<Product[]>([]);
-  
-  @Traced({ spanName: 'load-products' })
-  @Metric({ 
-    name: 'products.loaded',
-    value: (result: Product[]) => result.length 
-  })
-  async loadProducts(): Promise<Product[]> {
-    const products = await this.api.getProducts();
-    this.products.set(products);
-    return products;
-  }
-}
-```
-
 ### Benefits of Decorator Approach
 
 1. **Separation of Concerns**: Telemetry configuration is separate from business logic
