@@ -18,12 +18,17 @@ export function Telemetry(options?: TelemetryConfig | string): ClassDecorator {
       ? { namespace: options } 
       : options || {};
     
-    // Use provided namespace or derive from class name
-    const namespace = config.namespace || constructor.name;
+    // Use provided namespace, spanName, or derive from class name
+    const namespace = config.namespace || config.spanName || constructor.name;
     
     // Store telemetry context as metadata
     Reflect.defineMetadata(TELEMETRY_METADATA.NAMESPACE, namespace, constructor);
     Reflect.defineMetadata(TELEMETRY_METADATA.CONFIG, config, constructor);
+    
+    // Store metrics configuration if provided
+    if (config.metrics) {
+      Reflect.defineMetadata('telemetry:metrics', config.metrics, constructor);
+    }
     
     // Auto-instrument lifecycle methods if requested
     if (config.autoInstrument?.lifecycle !== false) {
@@ -34,6 +39,11 @@ export function Telemetry(options?: TelemetryConfig | string): ClassDecorator {
     if (config.autoInstrument?.methods) {
       instrumentAllMethods(constructor, namespace, config);
     }
+    
+    // Add a static method to get metrics configuration
+    constructor.getTelemetryMetrics = function() {
+      return config.metrics || {};
+    };
     
     return constructor;
   };
@@ -64,7 +74,7 @@ export function getTelemetryContext(target: any, propertyKey?: string): Telemetr
 /**
  * Instrument Angular lifecycle methods
  */
-function instrumentLifecycleMethods(constructor: any, namespace: string, config: TelemetryConfig): void {
+function instrumentLifecycleMethods(constructor: any, namespace: string, _config: TelemetryConfig): void {
   const lifecycleMethods = [
     'ngOnInit',
     'ngOnDestroy', 
@@ -101,7 +111,7 @@ function instrumentLifecycleMethods(constructor: any, namespace: string, config:
 /**
  * Instrument all methods in a class
  */
-function instrumentAllMethods(constructor: any, namespace: string, config: TelemetryConfig): void {
+function instrumentAllMethods(constructor: any, namespace: string, _config: TelemetryConfig): void {
   const prototype = constructor.prototype;
   const propertyNames = Object.getOwnPropertyNames(prototype);
   

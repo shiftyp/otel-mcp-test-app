@@ -1,11 +1,21 @@
-import { Component, Input } from '@angular/core';
+import { Component, Input, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { RouterLink } from '@angular/router';
+import { RouterLink, Router } from '@angular/router';
+import { AuthService } from '../../services/auth.service';
+import { SearchBarComponent } from './components/search-bar.component';
+import { UserMenuComponent } from './components/user-menu.component';
+import { AuthLinksComponent } from './components/auth-links.component';
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [CommonModule, RouterLink],
+  imports: [
+    CommonModule,
+    RouterLink,
+    SearchBarComponent,
+    UserMenuComponent,
+    AuthLinksComponent
+  ],
   template: `
     <header class="app-header">
       <div class="container">
@@ -13,16 +23,17 @@ import { RouterLink } from '@angular/router';
           <a routerLink="/">E-Commerce Platform</a>
         </div>
         
-        <div class="search-bar">
-          <input type="text" placeholder="Search for products..." />
-          <button>Search</button>
-        </div>
+        <app-search-bar (search)="onSearch($event)" />
         
         <div class="header-actions">
-          <a routerLink="/account" class="account-link">
-            <span class="icon">👤</span>
-            <span>Account</span>
-          </a>
+          @if (authService.isAuthenticated()) {
+            <app-user-menu 
+              [user]="authService.currentUser()"
+              (logout)="logout()"
+            />
+          } @else {
+            <app-auth-links />
+          }
           
           <a routerLink="/cart" class="cart-link">
             <span class="icon">🛒</span>
@@ -57,41 +68,12 @@ import { RouterLink } from '@angular/router';
       text-decoration: none;
     }
 
-    .search-bar {
-      flex: 1;
-      display: flex;
-      max-width: 500px;
-    }
-
-    .search-bar input {
-      flex: 1;
-      padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 0.25rem 0 0 0.25rem;
-      font-size: 1rem;
-    }
-
-    .search-bar button {
-      padding: 0.5rem 1.5rem;
-      background-color: #007bff;
-      color: white;
-      border: none;
-      border-radius: 0 0.25rem 0.25rem 0;
-      cursor: pointer;
-      font-weight: 600;
-    }
-
-    .search-bar button:hover {
-      background-color: #0056b3;
-    }
-
     .header-actions {
       display: flex;
       gap: 1.5rem;
       align-items: center;
     }
 
-    .account-link,
     .cart-link {
       display: flex;
       align-items: center;
@@ -101,7 +83,6 @@ import { RouterLink } from '@angular/router';
       position: relative;
     }
 
-    .account-link:hover,
     .cart-link:hover {
       opacity: 0.8;
     }
@@ -129,4 +110,16 @@ import { RouterLink } from '@angular/router';
 })
 export class HeaderComponent {
   @Input() cartItemCount: number = 0;
+  
+  protected authService = inject(AuthService);
+  private router = inject(Router);
+
+  logout() {
+    this.authService.logout();
+    this.router.navigate(['/']);
+  }
+
+  onSearch(query: string) {
+    this.router.navigate(['/search'], { queryParams: { q: query } });
+  }
 }

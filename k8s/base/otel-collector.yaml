@@ -40,9 +40,10 @@ spec:
     spec:
       containers:
         - name: otel-collector
-          image: otel/opentelemetry-collector-contrib:0.91.0
-          command:
-            - "--config=/etc/otel-collector-config.yaml"
+          image: ecommerce-registry:5000/opentelemetry-collector-contrib:local
+          command: ["/otelcol-contrib"]
+          args:
+            - "--config=/etc/otel-collector/otel-collector-config.yaml"
           ports:
             - containerPort: 4317
             - containerPort: 4318
@@ -52,7 +53,7 @@ spec:
             - containerPort: 55679
           volumeMounts:
             - name: config
-              mountPath: /etc
+              mountPath: /etc/otel-collector
           resources:
             requests:
               memory: "256Mi"
@@ -76,3 +77,6 @@ spec:
         - name: config
           configMap:
             name: otel-collector-config
+            items:
+              - key: otel-collector-config.yaml
+                path: otel-collector-config.yaml

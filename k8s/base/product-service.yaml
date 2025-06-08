@@ -8,8 +8,8 @@ spec:
   selector:
     app: product-service
   ports:
-    - port: 3002
-      targetPort: 3002
+    - port: 3003
+      targetPort: 3003
   type: ClusterIP
 
 ---
@@ -30,15 +30,14 @@ spec:
     spec:
       containers:
         - name: product-service
-          image: product-service:local
-          imagePullPolicy: Never
+          image: ecommerce-registry:5000/product-service:local
           ports:
-            - containerPort: 3002
+            - containerPort: 3003
           env:
             - name: NODE_ENV
               value: "production"
             - name: PORT
-              value: "3002"
+              value: "3003"
             - name: MONGODB_URI
               value: "mongodb://admin:$(MONGO_PASSWORD)@mongodb:27017/ecommerce_products?authSource=admin"
             - name: MONGO_PASSWORD
@@ -79,12 +78,12 @@ spec:
           livenessProbe:
             httpGet:
               path: /health
-              port: 3002
+              port: 3003
             initialDelaySeconds: 30
             periodSeconds: 10
           readinessProbe:
             httpGet:
               path: /ready
-              port: 3002
+              port: 3003
             initialDelaySeconds: 10
             periodSeconds: 5

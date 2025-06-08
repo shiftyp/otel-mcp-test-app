@@ -6,12 +6,13 @@ import { registerInstrumentations } from '@opentelemetry/instrumentation';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
 import { Resource } from '@opentelemetry/resources';
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from '@opentelemetry/semantic-conventions';
-import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
+import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-grpc';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { ExpressInstrumentation } from '@opentelemetry/instrumentation-express';
 import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
+import { W3CTraceContextPropagator } from '@opentelemetry/core';
 
-const collectorUrl = process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] || 'http://localhost:4318';
+const collectorUrl = process.env['OTEL_EXPORTER_OTLP_ENDPOINT'] || 'http://localhost:4317';
 
 // Initialize the tracer provider
 const provider = new NodeTracerProvider({
@@ -24,19 +25,23 @@ const provider = new NodeTracerProvider({
 
 // Configure the exporter
 const exporter = new OTLPTraceExporter({
-  url: `${collectorUrl}/v1/traces`,
+  url: collectorUrl,
 });
 
 // Add the span processor
 provider.addSpanProcessor(new BatchSpanProcessor(exporter));
 
-// Register the provider
-provider.register();
+// Register the provider with W3C trace context propagation
+provider.register({
+  propagator: new W3CTraceContextPropagator(),
+});
 
 // Register instrumentations
 registerInstrumentations({
   instrumentations: [
-    new HttpInstrumentation(),
+    new HttpInstrumentation({
+      ignoreIncomingPaths: [/health/],
+    }),
     new ExpressInstrumentation(),
   ],
 });

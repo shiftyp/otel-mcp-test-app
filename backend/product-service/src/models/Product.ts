@@ -1,7 +1,4 @@
-import { ObjectId } from 'mongodb';
-
 export interface IProduct {
-  _id?: ObjectId;
   id: string;
   name: string;
   description: string;
@@ -44,7 +41,6 @@ export interface IProduct {
 }
 
 export class Product implements IProduct {
-  _id?: ObjectId;
   id: string;
   name: string;
   description: string;
@@ -86,7 +82,6 @@ export class Product implements IProduct {
   updatedAt: Date;
 
   constructor(data: Partial<IProduct>) {
-    this._id = data._id;
     this.id = data.id || '';
     this.name = data.name || '';
     this.description = data.description || '';
@@ -118,7 +113,6 @@ export class Product implements IProduct {
 
   public toJSON(): IProduct {
     return {
-      _id: this._id,
       id: this.id,
       name: this.name,
       description: this.description,

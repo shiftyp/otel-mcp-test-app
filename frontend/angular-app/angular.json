@@ -15,7 +15,7 @@
       "prefix": "app",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:application",
+          "builder": "@angular/build:application",
           "options": {
             "outputPath": "dist/ecommerce-frontend",
             "index": "src/index.html",
@@ -32,10 +32,15 @@
             ],
             "scripts": [],
             "server": "src/main.server.ts",
-            "prerender": true,
+            "prerender": false,
             "ssr": {
               "entry": "server.ts"
-            }
+            },
+            "allowedCommonJsDependencies": [
+              "@opentelemetry/instrumentation",
+              "@opentelemetry/core",
+              "@opentelemetry/api"
+            ]
           },
           "configurations": {
             "production": {
@@ -51,63 +56,64 @@
                   "maximumError": "4kb"
                 }
               ],
-              "outputHashing": "all"
+              "outputHashing": "all",
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.prod.ts"
+                }
+              ]
             },
             "development": {
               "optimization": false,
               "extractLicenses": false,
               "sourceMap": true
+            },
+            "server": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "fileReplacements": [
+                {
+                  "replace": "src/environments/environment.ts",
+                  "with": "src/environments/environment.server.ts"
+                }
+              ]
             }
           },
           "defaultConfiguration": "production"
         },
         "serve": {
-          "builder": "@angular-devkit/build-angular:dev-server",
-          "configurations": {
-            "production": {
-              "buildTarget": "ecommerce-frontend:build:production"
-            },
-            "development": {
-              "buildTarget": "ecommerce-frontend:build:development"
-            }
-          },
+          "builder": "@angular/build:application",
           "defaultConfiguration": "development"
         },
-        "extract-i18n": {
-          "builder": "@angular-devkit/build-angular:extract-i18n",
-          "options": {
-            "buildTarget": "ecommerce-frontend:build"
-          }
-        },
-        "test": {
-          "builder": "@angular-devkit/build-angular:karma",
-          "options": {
-            "polyfills": [
-              "zone.js",
-              "zone.js/testing"
-            ],
-            "tsConfig": "tsconfig.spec.json",
-            "inlineStyleLanguage": "scss",
-            "assets": [
-              "src/favicon.ico",
-              "src/assets"
-            ],
-            "styles": [
-              "src/styles.scss"
-            ],
-            "scripts": []
-          }
-        },
         "server": {
-          "builder": "@angular-devkit/build-angular:server",
+          "builder": "@angular/build:application",
           "options": {
             "outputPath": "dist/ecommerce-frontend/server",
-            "main": "server.ts",
-            "tsConfig": "tsconfig.server.json"
+            "tsConfig": "tsconfig.server.json",
+            "externalDependencies": [
+              "@opentelemetry/instrumentation",
+              "@opentelemetry/instrumentation-express",
+              "@opentelemetry/instrumentation-http",
+              "@opentelemetry/sdk-trace-node",
+              "@opentelemetry/resources",
+              "@opentelemetry/semantic-conventions",
+              "@opentelemetry/exporter-trace-otlp-http",
+              "@opentelemetry/sdk-trace-base",
+              "import-in-the-middle",
+              "require-in-the-middle",
+              "path",
+              "fs",
+              "url",
+              "express"
+            ]
           },
           "configurations": {
             "production": {
-              "outputHashing": "media"
+              "outputHashing": "media",
+              "optimization": false,
+              "sourceMap": true
             },
             "development": {
               "optimization": false,
@@ -118,37 +124,10 @@
           "defaultConfiguration": "production"
         },
         "serve-ssr": {
-          "builder": "@angular-devkit/build-angular:ssr-dev-server",
-          "configurations": {
-            "development": {
-              "browserTarget": "ecommerce-frontend:build:development",
-              "serverTarget": "ecommerce-frontend:server:development"
-            },
-            "production": {
-              "browserTarget": "ecommerce-frontend:build:production",
-              "serverTarget": "ecommerce-frontend:server:production"
-            }
-          },
-          "defaultConfiguration": "development"
+          "builder": "@angular/build:application"
         },
         "prerender": {
-          "builder": "@angular-devkit/build-angular:prerender",
-          "options": {
-            "routes": [
-              "/"
-            ]
-          },
-          "configurations": {
-            "production": {
-              "browserTarget": "ecommerce-frontend:build:production",
-              "serverTarget": "ecommerce-frontend:server:production"
-            },
-            "development": {
-              "browserTarget": "ecommerce-frontend:build:development",
-              "serverTarget": "ecommerce-frontend:server:development"
-            }
-          },
-          "defaultConfiguration": "production"
+          "builder": "@angular/build:application"
         }
       }
     }

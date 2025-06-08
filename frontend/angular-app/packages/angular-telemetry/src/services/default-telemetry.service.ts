@@ -3,16 +3,18 @@ import { signal, computed, effect, Signal, WritableSignal, EffectRef, Injectable
 const isPlatformServer = (platformId: Object): boolean => {
   return platformId === 'server';
 };
-import { trace, SpanStatusCode, metrics, Span } from '@opentelemetry/api';
+import { trace, SpanStatusCode, metrics, Span, context } from '@opentelemetry/api';
 import { 
   ITelemetryService, 
   SignalTelemetryOptions, 
   ComputedTelemetryOptions, 
   EffectTelemetryOptions 
 } from './telemetry.interface';
+import { NONAME } from 'node:dns/promises';
+import { AttributeNames } from '@opentelemetry/instrumentation-user-interaction';
 
 class MetricsAggregator {
-  private counters = new Map<string, number>();
+  private counters = new Map<string, { labels: any, count: number }>();
   private meter = metrics.getMeter('angular-signals');
   private flushInterval: any;
   
@@ -21,15 +23,13 @@ class MetricsAggregator {
   }
   
   increment(name: string, labels: Record<string, any> = {}) {
-    const key = `${name}:${JSON.stringify(labels)}`;
-    this.counters.set(key, (this.counters.get(key) || 0) + 1);
+    const key = name;
+    this.counters.set(key, { labels, count: (this.counters.get(key)?.count || 0) + 1 });
   }
   
   private flush() {
     const counter = this.meter.createCounter('signal_operations_total');
-    this.counters.forEach((count, key) => {
-      const [name, labelsJson] = key.split(':');
-      const labels = JSON.parse(labelsJson);
+    this.counters.forEach(({ count, labels }, name) => {
       counter.add(count, labels);
     });
     this.counters.clear();
@@ -91,98 +91,24 @@ export class DefaultTelemetryService implements ITelemetryService {
       );
     };
     
-    // Create a wrapper that intercepts signal operations
-    const tracedSignal = {
-      set: (value: T) => {
+    // Create a traced signal wrapper object that implements WritableSignal interface
+    // This avoids the performance overhead of Proxy
+    const tracedSignal = Object.assign(
+      // The function that reads the signal value
+      () => {
         if (opts.recordMetrics) {
-          this.metricsAggregator.increment('signal_writes', { 
-            signal_name: name,
-            has_parent: !!trace.getActiveSpan(),
-            platform: this.isServer ? 'server' : 'browser'
-          });
-        }
-        
-        const span = createSpan('write');
-        
-        try {
-          const previousValue = baseSignal();
-          baseSignal.set(value);
-          
-          if (span) {
-            span.setAttributes({
-              'signal.value_changed': previousValue !== value
-            });
-            
-            if (opts.attributes && value !== undefined) {
-              const attrs = opts.attributes(value);
-              span.setAttributes(attrs);
-            }
-            
-            span.setStatus({ code: SpanStatusCode.OK });
-          }
-        } catch (error) {
-          if (span) {
-            span.recordException(error as Error);
-            span.setStatus({ code: SpanStatusCode.ERROR });
-          }
-          throw error;
-        } finally {
-          span?.end();
-        }
-      },
-      
-      update: (updateFn: (value: T) => T) => {
-        if (opts.recordMetrics) {
-          this.metricsAggregator.increment('signal_updates', { 
-            signal_name: name,
-            has_parent: !!trace.getActiveSpan(),
-            platform: this.isServer ? 'server' : 'browser'
-          });
-        }
-        
-        const span = createSpan('update');
-        
-        try {
-          baseSignal.update(updateFn);
-          span?.setStatus({ code: SpanStatusCode.OK });
-        } catch (error) {
-          if (span) {
-            span.recordException(error as Error);
-            span.setStatus({ code: SpanStatusCode.ERROR });
-          }
-          throw error;
-        } finally {
-          span?.end();
-        }
-      },
-      
-      asReadonly: () => baseSignal.asReadonly()
-    };
-    
-    // Create a proxy that handles both function calls and property access
-    const self = this;
-    return new Proxy(baseSignal, {
-      get(target, prop) {
-        if (prop === 'set') return tracedSignal.set;
-        if (prop === 'update') return tracedSignal.update;
-        if (prop === 'asReadonly') return tracedSignal.asReadonly;
-        return target[prop as keyof WritableSignal<T>];
-      },
-      apply(target, thisArg, args) {
-        // When called as a function, execute traced read logic
-        if (opts.recordMetrics) {
-          self.metricsAggregator.increment('signal_reads', { 
+          this.metricsAggregator.increment('signal_reads', { 
             signal_name: name, 
             has_parent: !!trace.getActiveSpan(),
-            platform: self.isServer ? 'server' : 'browser'
+            platform: this.isServer ? 'server' : 'browser'
           });
         }
         
         const span = createSpan('read');
-        if (!span) return target();
+        if (!span) return baseSignal();
         
         try {
-          const value = target();
+          const value = baseSignal();
           if (opts.attributes && value !== undefined) {
             const attrs = opts.attributes(value);
             span.setAttributes(attrs);
@@ -196,8 +122,77 @@ export class DefaultTelemetryService implements ITelemetryService {
         } finally {
           span.end();
         }
+      },
+      // The signal methods
+      {
+        set: (value: T) => {
+          if (opts.recordMetrics) {
+            this.metricsAggregator.increment('signal_writes', { 
+              signal_name: name,
+              has_parent: !!trace.getActiveSpan(),
+              platform: this.isServer ? 'server' : 'browser'
+            });
+          }
+          
+          const span = createSpan('write');
+          
+          try {
+            const previousValue = baseSignal();
+            baseSignal.set(value);
+            
+            if (span) {
+              span.setAttributes({
+                'signal.value_changed': previousValue !== value
+              });
+              
+              if (opts.attributes && value !== undefined) {
+                const attrs = opts.attributes(value);
+                span.setAttributes(attrs);
+              }
+              
+              span.setStatus({ code: SpanStatusCode.OK });
+            }
+          } catch (error) {
+            if (span) {
+              span.recordException(error as Error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+            }
+            throw error;
+          } finally {
+            span?.end();
+          }
+        },
+        
+        update: (updateFn: (value: T) => T) => {
+          if (opts.recordMetrics) {
+            this.metricsAggregator.increment('signal_updates', { 
+              signal_name: name,
+              has_parent: !!trace.getActiveSpan(),
+              platform: this.isServer ? 'server' : 'browser'
+            });
+          }
+          
+          const span = createSpan('update');
+          
+          try {
+            baseSignal.update(updateFn);
+            span?.setStatus({ code: SpanStatusCode.OK });
+          } catch (error) {
+            if (span) {
+              span.recordException(error as Error);
+              span.setStatus({ code: SpanStatusCode.ERROR });
+            }
+            throw error;
+          } finally {
+            span?.end();
+          }
+        },
+        
+        asReadonly: () => baseSignal.asReadonly()
       }
-    }) as WritableSignal<T>;
+    );
+    
+    return tracedSignal as WritableSignal<T>;
   }
   
   createTracedComputed<T>(
@@ -387,17 +382,20 @@ export class DefaultTelemetryService implements ITelemetryService {
       }
     });
     
-    try {
-      const result = fn();
-      span.setStatus({ code: SpanStatusCode.OK });
-      return result;
-    } catch (error) {
-      span.recordException(error as Error);
-      span.setStatus({ code: SpanStatusCode.ERROR });
-      throw error;
-    } finally {
-      span.end();
-    }
+    // Set the span as active in the context
+    return context.with(trace.setSpan(context.active(), span), () => {
+      try {
+        const result = fn();
+        span.setStatus({ code: SpanStatusCode.OK });
+        return result;
+      } catch (error) {
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        throw error;
+      } finally {
+        span.end();
+      }
+    });
   }
   
   recordMetric(name: string, value: number, attributes?: Record<string, any>): void {

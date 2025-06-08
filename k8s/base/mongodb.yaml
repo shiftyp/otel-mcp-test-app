@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: mongodb
-          image: mongo:7-jammy
+          image: ecommerce-registry:5000/mongo:local
           ports:
             - containerPort: 27017
           env:

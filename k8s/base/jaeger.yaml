@@ -40,7 +40,7 @@ spec:
     spec:
       containers:
         - name: jaeger
-          image: jaegertracing/all-in-one:1.52
+          image: ecommerce-registry:5000/all-in-one:local
           ports:
             - containerPort: 14268
             - containerPort: 14250

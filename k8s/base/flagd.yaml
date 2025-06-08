@@ -115,7 +115,7 @@ spec:
     spec:
       containers:
         - name: flagd
-          image: ghcr.io/open-feature/flagd:v0.7.3
+          image: ecommerce-registry:5000/flagd:local
           args:
             - start
             - --uri

@@ -13,15 +13,15 @@ export class TelemetryService extends DefaultTelemetryService {
 
   // Backward compatibility methods
   signal<T>(initialValue: T, options?: any): WritableSignal<T> {
-    return this.createTracedSignal(initialValue, options?.trackerName || 'signal', options);
+    return this.createTracedSignal(initialValue, options?.trackerName || 'signal', options) as any;
   }
 
   computed<T>(computation: () => T, options?: any): Signal<T> {
-    return this.createTracedComputed(computation, options?.trackerName || 'computed', options);
+    return this.createTracedComputed(computation, options?.trackerName || 'computed', options) as any;
   }
 
   effect(effectFn: () => void, options?: any): EffectRef {
-    return this.createTracedEffect(effectFn, options?.trackerName || 'effect', options);
+    return this.createTracedEffect(effectFn, options?.trackerName || 'effect', options) as any;
   }
 
   recordPageView(pageName: string): void {

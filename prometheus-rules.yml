@@ -1,0 +1,47 @@
+groups:
+  - name: jaeger_spm_metrics
+    interval: 15s
+    rules:
+      # Request rate per service
+      - record: service_request_rate
+        expr: |
+          sum by (service_name, span_name, http_method) (
+            rate(otel_traces_span_metrics_calls_total[1m])
+          )
+      
+      # Error rate per service
+      - record: service_error_rate
+        expr: |
+          sum by (service_name, span_name) (
+            rate(otel_traces_span_metrics_calls_total{status_code="STATUS_CODE_ERROR"}[1m])
+          ) / 
+          sum by (service_name, span_name) (
+            rate(otel_traces_span_metrics_calls_total[1m])
+          )
+      
+      # P50 latency
+      - record: service_latency_p50
+        expr: |
+          histogram_quantile(0.5,
+            sum by (service_name, span_name, le) (
+              rate(otel_traces_span_metrics_duration_milliseconds_bucket[1m])
+            )
+          )
+      
+      # P95 latency  
+      - record: service_latency_p95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (service_name, span_name, le) (
+              rate(otel_traces_span_metrics_duration_milliseconds_bucket[1m])
+            )
+          )
+      
+      # P99 latency
+      - record: service_latency_p99
+        expr: |
+          histogram_quantile(0.99,
+            sum by (service_name, span_name, le) (
+              rate(otel_traces_span_metrics_duration_milliseconds_bucket[1m])
+            )
+          )

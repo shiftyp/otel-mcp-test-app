@@ -1,8 +1,11 @@
-import { Injectable, signal, effect } from '@angular/core';
+import { Injectable, signal, effect, Inject, PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { environment } from '../../environments/environment';
+import { TransferState, makeStateKey } from '@angular/core';
 import { Observable, of, timer, concat, throwError } from 'rxjs';
 import { catchError, map, retry, shareReplay, switchMap, tap } from 'rxjs/operators';
+import { AuthService } from './auth.service';
+import { injectEnvironment } from '../providers/environment.provider';
 
 export interface FlagValue<T = any> {
   value: T;
@@ -10,20 +13,33 @@ export interface FlagValue<T = any> {
   variant: string;
 }
 
+// State keys for transfer state
+const SESSION_ID_KEY = makeStateKey<string>('sessionId');
+const USER_ID_KEY = makeStateKey<string>('userId');
+const TEST_TYPE_KEY = makeStateKey<string>('testType');
+
 @Injectable({
   providedIn: 'root'
 })
 export class FeatureFlagService {
-  private flagdUrl = environment.flagdUrl || 'http://localhost:8013';
+  private environment = injectEnvironment();
+  private flagdUrl = this.environment.flagdUrl || 'http://localhost:8013';
   private cache = new Map<string, Observable<any>>();
   private flagsSignal = signal<Record<string, any>>({});
   
   // Public readonly access to flags
   public flags = this.flagsSignal.asReadonly();
 
-  constructor(private http: HttpClient) {
-    // Start polling for flag updates
-    this.startFlagPolling();
+  constructor(
+    private http: HttpClient,
+    @Inject(PLATFORM_ID) private platformId: Object,
+    private transferState: TransferState,
+    private authService: AuthService
+  ) {
+    // Start polling for flag updates only in browser
+    if (isPlatformBrowser(this.platformId)) {
+      this.startFlagPolling();
+    }
   }
 
   /**
@@ -72,14 +88,20 @@ export class FeatureFlagService {
     const cacheKey = `${key}:${type}`;
     
     if (!this.cache.has(cacheKey)) {
-      const evaluation$ = this.http.post<FlagValue<T>>(
-        `${this.flagdUrl}/flagd.evaluation.v1.Service/ResolveBoolean`,
+      // Use OFREP endpoint for flag evaluation
+      const evaluation$ = this.http.post<any>(
+        `${this.flagdUrl}/ofrep/v1/evaluate/flags/${key}`,
         {
-          flagKey: key,
           context: this.getEvaluationContext()
         }
       ).pipe(
-        map(response => response.value),
+        map(response => {
+          // OFREP response format
+          if (response && response.value !== undefined) {
+            return response.value as T;
+          }
+          return defaultValue;
+        }),
         catchError(error => {
           console.warn(`Feature flag evaluation failed for ${key}:`, error);
           return of(defaultValue);
@@ -98,7 +120,7 @@ export class FeatureFlagService {
     // Build context for flag evaluation
     const context: Record<string, any> = {
       timestamp: new Date().toISOString(),
-      environment: environment.production ? 'production' : 'development',
+      environment: this.environment.production ? 'production' : 'development',
       hour: new Date().getHours(),
       sessionId: this.getSessionId(),
     };
@@ -118,10 +140,10 @@ export class FeatureFlagService {
         width: window.innerWidth,
         height: window.innerHeight
       };
-      context['platform'] = window.navigator.platform;
+      context['platform'] = isPlatformBrowser(this.platformId) ? (window.navigator as any).userAgentData?.platform || window.navigator.platform : 'server';
       
       // Performance context
-      context['componentCount'] = document.querySelectorAll('[class*="component"]').length;
+      context['componentCount'] = isPlatformBrowser(this.platformId) ? document.querySelectorAll('[class*="component"]').length : 0;
       context['scrollDepth'] = this.getScrollDepth();
       
       // Load context
@@ -145,8 +167,39 @@ export class FeatureFlagService {
   }
 
   private getUserId(): string | null {
-    // Get from auth service or localStorage
-    return localStorage.getItem('userId');
+    // Check transfer state first
+    if (this.transferState.hasKey(USER_ID_KEY)) {
+      const userId = this.transferState.get(USER_ID_KEY, null);
+      if (isPlatformBrowser(this.platformId)) {
+        this.transferState.remove(USER_ID_KEY);
+      }
+      return userId;
+    }
+
+    // Try to get from auth service first
+    const currentUser = this.authService.currentUser();
+    if (currentUser?.id) {
+      return currentUser.id;
+    }
+
+    if (!isPlatformBrowser(this.platformId)) {
+      // Server-side: In a real app, you'd check cookies here
+      // For now, return null which will exclude user-specific flags
+      return null;
+    }
+    
+    // Client-side: fallback to localStorage (for backward compatibility)
+    const storedUser = localStorage.getItem('currentUser');
+    if (storedUser) {
+      try {
+        const user = JSON.parse(storedUser);
+        return user.id || null;
+      } catch (e) {
+        // Invalid JSON in localStorage
+      }
+    }
+    
+    return localStorage.getItem('userId'); // Legacy fallback
   }
 
   private getUserGroup(userId: string): string {
@@ -171,15 +224,36 @@ export class FeatureFlagService {
   }
   
   private getSessionId(): string {
-    let sessionId = sessionStorage.getItem('sessionId');
-    if (!sessionId) {
-      sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
-      sessionStorage.setItem('sessionId', sessionId);
+    // Check if we have a session ID in transfer state
+    if (this.transferState.hasKey(SESSION_ID_KEY)) {
+      const sessionId = this.transferState.get(SESSION_ID_KEY, '');
+      // Remove from transfer state after reading (only on client)
+      if (isPlatformBrowser(this.platformId)) {
+        this.transferState.remove(SESSION_ID_KEY);
+      }
+      return sessionId;
     }
-    return sessionId;
+
+    if (isPlatformBrowser(this.platformId)) {
+      // Client-side: check sessionStorage first
+      let sessionId = sessionStorage.getItem('sessionId');
+      if (!sessionId) {
+        sessionId = 'session_' + Math.random().toString(36).substring(2, 11);
+        sessionStorage.setItem('sessionId', sessionId);
+      }
+      return sessionId;
+    } else {
+      // Server-side: generate and store in transfer state
+      const sessionId = 'session_' + Math.random().toString(36).substring(2, 11);
+      this.transferState.set(SESSION_ID_KEY, sessionId);
+      return sessionId;
+    }
   }
   
   private detectBrowser(): string {
+    if (!isPlatformBrowser(this.platformId)) {
+      return 'SSR';
+    }
     const userAgent = window.navigator.userAgent;
     if (userAgent.includes('Chrome')) return 'Chrome';
     if (userAgent.includes('Firefox')) return 'Firefox';
@@ -189,6 +263,9 @@ export class FeatureFlagService {
   }
   
   private getScrollDepth(): number {
+    if (!isPlatformBrowser(this.platformId)) {
+      return 0;
+    }
     const scrolled = window.scrollY;
     const viewportHeight = window.innerHeight;
     const totalHeight = document.documentElement.scrollHeight;
@@ -197,6 +274,9 @@ export class FeatureFlagService {
   }
   
   private getConcurrentRequests(): number {
+    if (!isPlatformBrowser(this.platformId)) {
+      return 0;
+    }
     // Estimate based on performance API
     if ('performance' in window) {
       const entries = performance.getEntriesByType('resource');
@@ -207,6 +287,9 @@ export class FeatureFlagService {
   }
   
   private getRequestRate(): number {
+    if (!isPlatformBrowser(this.platformId)) {
+      return 0;
+    }
     const key = 'request_rate';
     const now = Date.now();
     const data = JSON.parse(localStorage.getItem(key) || '[]');
@@ -220,6 +303,9 @@ export class FeatureFlagService {
   }
   
   private getCartSize(): number {
+    if (!isPlatformBrowser(this.platformId)) {
+      return 0;
+    }
     try {
       const cart = localStorage.getItem('cart');
       if (cart) {
@@ -233,41 +319,55 @@ export class FeatureFlagService {
   }
   
   private getTestType(): string | null {
-    // Check URL params or environment
-    const params = new URLSearchParams(window.location.search);
-    return params.get('testType') || localStorage.getItem('testType');
+    // Check transfer state first
+    if (this.transferState.hasKey(TEST_TYPE_KEY)) {
+      const testType = this.transferState.get(TEST_TYPE_KEY, null);
+      if (isPlatformBrowser(this.platformId)) {
+        this.transferState.remove(TEST_TYPE_KEY);
+      }
+      return testType;
+    }
+
+    if (!isPlatformBrowser(this.platformId)) {
+      // Server-side: return null, test type is typically set client-side
+      return null;
+    }
+    
+    // Client-side: check URL params or localStorage
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('testType') || localStorage.getItem('testType');
+    }
+    return null;
   }
 
   private fetchAllFlags(): Observable<Record<string, any>> {
-    // In a real implementation, this would fetch all flags at once
-    // For now, we'll use the individual flag evaluation
-    const flagKeys = [
-      'darkMode', 
-      'newCheckoutFlow', 
-      'performanceMode', 
-      'recommendationEngine',
-      'distributedCacheMode',
-      'memoryManagement',
-      'inventoryAlgorithm',
-      'dataFetchStrategy',
-      'networkResilience',
-      'mobileCorsPolicy',
-      'paginationStrategy',
-      'cacheWarmupStrategy',
-      'sessionReplication',
-      'renderingMode'
-    ];
-    
-    return of(flagKeys).pipe(
-      map(keys => {
+    // Use OFREP bulk evaluation endpoint
+    return this.http.post<any>(
+      `${this.flagdUrl}/ofrep/v1/evaluate/flags`,
+      {
+        context: this.getEvaluationContext()
+      }
+    ).pipe(
+      map(response => {
         const flags: Record<string, any> = {};
-        // This is simplified - in production you'd batch these requests
-        keys.forEach(key => {
-          this.getObjectFlag(key, {}).subscribe(value => {
-            flags[key] = { value };
+        
+        // OFREP bulk response format
+        if (response && response.flags) {
+          Object.entries(response.flags).forEach(([key, flagData]: [string, any]) => {
+            flags[key] = {
+              value: flagData.value,
+              variant: flagData.variant,
+              reason: flagData.reason
+            };
           });
-        });
+        }
+        
         return flags;
+      }),
+      catchError(error => {
+        console.error('Failed to fetch all feature flags:', error);
+        return of({});
       })
     );
   }

@@ -1,4 +1,4 @@
-import { Component, OnInit, signal, computed, effect } from '@angular/core';
+import { Component, OnInit, signal, computed, effect, inject, afterNextRender } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
@@ -6,7 +6,16 @@ import { ProductService } from '../../services/product.service';
 import { CartService } from '../../services/cart.service';
 import { TelemetryService } from '../../services/telemetry.service';
 import { Product } from '../../models/product.model';
+import { Telemetry, Traced, Metric, Logged } from 'angular-telemetry';
 
+@Telemetry({
+  metrics: {
+    'products.viewed': 'counter',
+    'products.filtered': 'counter',
+    'products.added_to_cart': 'counter',
+    'search.performed': 'counter',
+  }
+})
 @Component({
   selector: 'app-product-list',
   standalone: true,
@@ -19,15 +28,15 @@ import { Product } from '../../models/product.model';
       <div class="filters-section">
         <input 
           type="text" 
-          [(ngModel)]="searchTerm"
-          (ngModelChange)="onSearchChange()"
+          [ngModel]="searchTerm()"
+          (ngModelChange)="searchTerm.set($event); onSearchChange()"
           placeholder="Search products..."
           class="search-input"
         />
         
         <div class="filter-group">
           <label>Category:</label>
-          <select [(ngModel)]="selectedCategory" (ngModelChange)="onFilterChange()">
+          <select [ngModel]="selectedCategory()" (ngModelChange)="selectedCategory.set($event); onFilterChange()">
             <option value="">All Categories</option>
             <option *ngFor="let category of categories()" [value]="category">
               {{ category }}
@@ -37,7 +46,7 @@ import { Product } from '../../models/product.model';
         
         <div class="filter-group">
           <label>Sort by:</label>
-          <select [(ngModel)]="sortBy" (ngModelChange)="onSortChange()">
+          <select [ngModel]="sortBy()" (ngModelChange)="sortBy.set($event); onSortChange()">
             <option value="name">Name</option>
             <option value="price-asc">Price: Low to High</option>
             <option value="price-desc">Price: High to Low</option>
@@ -53,11 +62,11 @@ import { Product } from '../../models/product.model';
 
       <!-- Products Grid -->
       <div class="products-grid" *ngIf="!loading()">
-        <div class="product-card" *ngFor="let product of sortedProducts()">
+        <div class="product-card" *ngFor="let product of sortedProducts(); trackBy: trackByProductId">
           <div class="product-image">
             <img 
-              [src]="product.images[0]?.url || 'assets/placeholder.jpg'" 
-              [alt]="product.images[0]?.alt || product.name"
+              [src]="product.images[0].url || 'assets/placeholder.jpg'" 
+              [alt]="product.images[0].alt || product.name"
             />
             <span class="badge featured" *ngIf="product.isFeatured">Featured</span>
           </div>
@@ -331,113 +340,132 @@ import { Product } from '../../models/product.model';
   `]
 })
 export class ProductListComponent implements OnInit {
-  // Signals for reactive state
-  searchTerm = '';
-  selectedCategory = '';
-  sortBy = 'name';
+  // Inject services first
+  private productService = inject(ProductService);
+  private cartService = inject(CartService);
+  private telemetryService = inject(TelemetryService);
   
-  private currentPageSignal = signal(1);
-  private totalPagesSignal = signal(1);
-  private limitSignal = signal(12);
+  // Local UI state signals
+  searchTerm = signal('');
+  selectedCategory = signal('');
+  sortBy = signal('name');
   
-  // Read-only signals
+  // Get signals from service
+  @Traced({ spanName: 'products-list' })
   products = this.productService.products;
-  loading = this.productService.loading;
-  categories = this.productService.categories;
-  currentPage = this.currentPageSignal.asReadonly();
-  totalPages = this.totalPagesSignal.asReadonly();
   
-  // Computed signal for sorted products
-  sortedProducts = computed(() => {
-    const products = [...this.products()];
+  @Traced({ spanName: 'loading-state' })
+  loading = this.productService.loading;
+  
+  categories = this.productService.categories;
+  pagination = this.productService.pagination;
+  currentPage = computed(() => this.pagination().page);
+  totalPages = computed(() => this.pagination().totalPages);
+  
+  // Products are already sorted by the backend based on the sort parameter
+  @Traced({ spanName: 'sorted-products' })
+  sortedProducts = this.products;
+  
+  constructor() {
+    afterNextRender(() => this.telemetryService.withSpan('product-list-client-render', () => {
+      this.telemetryService.recordPageView('product-list');
+    }))
     
-    switch (this.sortBy) {
-      case 'name':
-        return products.sort((a, b) => a.name.localeCompare(b.name));
-      case 'price-asc':
-        return products.sort((a, b) => a.price - b.price);
-      case 'price-desc':
-        return products.sort((a, b) => b.price - a.price);
-      case 'rating':
-        return products.sort((a, b) => b.rating.average - a.rating.average);
-      default:
-        return products;
-    }
-  });
-
-  constructor(
-    private productService: ProductService,
-    private cartService: CartService,
-    private telemetryService: TelemetryService
-  ) {
-    // Effect to log when products change
+    // Effect to track product changes
     effect(() => {
-      console.log(`Loaded ${this.products().length} products`);
+      const productCount = this.products().length;
+      console.log(`Loaded ${productCount} products`);
+      
+      // Record metric for products loaded
+      this.telemetryService.recordMetric('products.loaded', productCount, {
+        'category': this.selectedCategory() || 'all',
+        'has_search': !!this.searchTerm()
+      });
+    });
+    
+    // Sync local UI state with service parameters
+    effect(() => {
+      this.productService.updateSearchParams({
+        search: this.searchTerm(),
+        category: this.selectedCategory(),
+        sort: this.sortBy()
+      });
     });
   }
 
   ngOnInit(): void {
-    this.telemetryService.recordPageView('product-list');
-    this.loadProducts();
+    // Resource will automatically load on initialization
   }
+  @Traced({ 
+    spanName: 'load-products'
+  })
+  @Metric('products.viewed')
 
-  loadProducts(): void {
-    this.productService.getProducts({
-      category: this.selectedCategory || undefined,
-      search: this.searchTerm || undefined,
-      page: this.currentPageSignal(),
-      limit: this.limitSignal()
-    }).subscribe(response => {
-      this.totalPagesSignal.set(response.pagination.totalPages);
-    });
-  }
-
+  @Traced({ 
+    spanName: 'search-products'
+  })
+  @Metric('search.performed')
   onSearchChange(): void {
-    this.currentPageSignal.set(1);
     this.telemetryService.recordMetric('search.query', 1, {
-      'search.term': this.searchTerm,
+      'search.term': this.searchTerm(),
       'search.results': this.products().length
     });
-    this.loadProducts();
+    // UI state update will trigger the effect which updates service params
+    // The effect will reset page to 1 via setSearch
   }
 
+  @Traced({ spanName: 'filter-change' })
+  @Metric('products.filtered')
   onFilterChange(): void {
-    this.currentPageSignal.set(1);
-    this.loadProducts();
+    // UI state update will trigger the effect which updates service params
   }
 
+  @Traced({ spanName: 'sort-change' })
+  @Metric('products.sorted')
   onSortChange(): void {
-    // Sorting is handled by the computed signal
+    // UI state update will trigger the effect which updates service params
   }
 
+  @Traced({ 
+    spanName: 'add-to-cart'
+  })
+  @Metric('products.added_to_cart')
+  @Logged({
+    level: 'info',
+    message: 'Product added to cart'
+  })
   addToCart(product: Product): void {
-    this.telemetryService.withSpan('add-to-cart', () => {
-      this.cartService.addToCart(product);
-      
-      this.telemetryService.recordMetric('cart.add', 1, {
-        'product.id': product.id,
-        'product.name': product.name,
-        'product.price': product.price,
-        'quantity': 1
-      });
-    }, {
+    this.cartService.addToCart(product);
+    
+    // Additional business metric
+    this.telemetryService.recordMetric('cart.add', 1, {
       'product.id': product.id,
       'product.name': product.name,
-      'product.price': product.price
+      'product.price': product.price,
+      'quantity': 1
     });
   }
 
+  @Traced({ spanName: 'pagination-next' })
+  @Metric('pagination.next')
   nextPage(): void {
-    if (this.currentPageSignal() < this.totalPagesSignal()) {
-      this.currentPageSignal.update(page => page + 1);
-      this.loadProducts();
+    const currentPage = this.currentPage();
+    const totalPages = this.totalPages();
+    if (currentPage < totalPages) {
+      this.productService.setPage(currentPage + 1);
     }
   }
 
+  @Traced({ spanName: 'pagination-previous' })
+  @Metric('pagination.previous')
   previousPage(): void {
-    if (this.currentPageSignal() > 1) {
-      this.currentPageSignal.update(page => page - 1);
-      this.loadProducts();
+    const currentPage = this.currentPage();
+    if (currentPage > 1) {
+      this.productService.setPage(currentPage - 1);
     }
+  }
+  
+  trackByProductId(index: number, product: Product): string {
+    return product.id;
   }
 }

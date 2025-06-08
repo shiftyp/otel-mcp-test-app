@@ -6,9 +6,10 @@ import express, { Express, Request, Response, NextFunction } from 'express';
 import { Pool } from 'pg';
 import { createClient, RedisClientType } from 'redis';
 import { config } from './config';
-import * as otelApi from '@opentelemetry/api';
+import { trace, SpanStatusCode } from '@opentelemetry/api';
 
 import userRoutes from './api/userRoutes'; 
+import { timeStamp } from 'console';
 
 const app: Express = express();
 
@@ -65,12 +66,19 @@ async function connectRedis() {
 }
 connectRedis();
 
-// --- Routes ---
 app.get('/health', (req: Request, res: Response) => {
   // Example of a custom trace span
-  const tracer = otelApi.trace.getTracer('user-service-tracer');
+  const tracer = trace.getTracer('user-service-tracer');
   const span = tracer.startSpan('health-check-span');
-  res.status(200).json({ status: 'UP', service: 'user-service' });
+  res.status(200).json({ status: 'healthy', service: 'user-service', timeStamp:  new Date().toISOString()});
+  span.end();
+});
+
+app.get('/ready', (req: Request, res: Response) => {
+  // Example of a custom trace span
+  const tracer = trace.getTracer('user-service-tracer');
+  const span = tracer.startSpan('health-check-span');
+  res.status(200).json({ status: 'ready', service: 'user-service', timeStamp: new Date().toISOString() });
   span.end();
 });
 
@@ -81,18 +89,19 @@ app.use('/api/users', userRoutes(pgPool, redisClient));
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error("Unhandled error:", err);
   // Potentially record error with OpenTelemetry here
-  const tracer = otelApi.trace.getTracer('user-service-tracer');
+  const tracer = trace.getTracer('user-service-tracer');
   const span = tracer.startSpan('global-error-handler');
   span.recordException(err);
-  span.setStatus({ code: otelApi.SpanStatusCode.ERROR, message: err.message });
+  span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
   span.end();
 
   res.status(500).json({ error: 'Internal Server Error', message: err.message });
 });
 
 // Start server
-app.listen(config.port, () => {
-  console.log(`User service listening on port ${config.port}`);
+const port = parseInt(config.port as string, 10) || 3001;
+app.listen(port, () => {
+  console.log(`User service listening on port ${port}`);
 });
 
 export default app; // For potential testing or programmatic use

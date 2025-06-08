@@ -1,96 +1,227 @@
+connectors:
+  spanmetrics:
+    # Histogram configuration for latency
+    histogram:
+      explicit:
+        buckets: [2ms, 4ms, 6ms, 8ms, 10ms, 50ms, 100ms, 200ms, 400ms, 800ms, 1s, 1400ms, 2s, 5s, 10s, 15s]
+    # Dimensions to add to metrics
+    dimensions:
+      - name: http.method
+        default: GET
+      - name: http.status_code
+      - name: http.route
+    # Exemplars configuration
+    exemplars:
+      enabled: false
+exporters:
+  debug: {}
+  elasticsearch:
+    endpoint: http://opensearch:9200
+    timeout: 90s
+    num_workers: 4
+    mapping:
+      mode: ecs
+    headers:
+      X-Elastic-Mapping-Mode: ecs
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: otel
+    const_labels:
+      source: otel-collector
+  # opensearch:
+  #   http:
+  #     endpoint: http://opensearch:9200
+  #     tls:
+  #       insecure: true
+  # otlp:
+  #   endpoint: jaeger:4317
+  #   tls:
+  #     insecure: true
+  # otlphttp/prometheus:
+  #   endpoint: http://prometheus:9090/api/v1/otlp
+  #   tls:
+  #     insecure: true
+# extensions:
+#   health_check:
+#     endpoint: ${env:MY_POD_IP}:13133
+processors:
+  batch: {}
+  cumulativetodelta:
+    # Convert all cumulative metrics to delta for Elasticsearch
+    # This will convert any histogram/sum metrics with cumulative temporality
+  # filter/metrics:
+  #   metrics:
+  #     exclude:
+  #       match_type: regexp
+  #       metric_names:
+  #         - http\.server\.duration
+  #         - http\.server\.response\.size
+  #         - jvm\.gc\.duration
+  #         - http\.client\.duration
+  #         - process\.runtime\.go\.gc\.pause_ns
+  #         - rpc\.client\.duration
+  #         - rpc\.client\.request\.size
+  #         - rpc\.client\.response\.size
+  #         - rpc\.client\.requests_per_rpc
+  #         - rpc\.client\.responses_per_rpc
+  #         - rpc\.server\.duration
+  #         - rpc\.server\.request\.size
+  #         - rpc\.server\.response\.size
+  #         - rpc\.server\.requests_per_rpc
+  #         - rpc\.server\.responses_per_rpc
+  #         - http\.client\.request\.duration
+  #         - http\.client\.connection\.duration
+  #         - http\.client\.request\.time_in_queue
+  #         - dns\.lookup\.duration
+  # k8sattributes:
+  #   extract:
+  #     metadata:
+  #     - k8s.namespace.name
+  #     - k8s.deployment.name
+  #     - k8s.statefulset.name
+  #     - k8s.daemonset.name
+  #     - k8s.cronjob.name
+  #     - k8s.job.name
+  #     - k8s.node.name
+  #     - k8s.pod.name
+  #     - k8s.pod.uid
+  #     - k8s.pod.start_time
+  #   passthrough: false
+  #   pod_association:
+  #   - sources:
+  #     - from: resource_attribute
+  #       name: k8s.pod.ip
+  #   - sources:
+  #     - from: resource_attribute
+  #       name: k8s.pod.uid
+  #   - sources:
+  #     - from: connection
+  # memory_limiter:
+  #   check_interval: 5s
+  #   limit_percentage: 80
+  #   spike_limit_percentage: 25
+  # resource:
+  #   attributes:
+  #   - action: insert
+  #     from_attribute: k8s.pod.uid
+  #     key: service.instance.id
+  # transform:
+  #   error_mode: ignore
+  #   metric_statements:
+  #   - context: resource
+  #     statements:
+  #     # Handle process.executable field mapping issues
+  #     - set(resource.attributes["process.executable.renamed"], resource.attributes["process.executable"]) where resource.attributes["process.executable"] != nil
+  #     - delete_key(resource.attributes, "process.executable") where resource.attributes["process.executable"] != nil
+  #   # Let's remove the problematic histogram handling for now
 receivers:
+  # httpcheck/frontend:
+  #   targets:
+  #   - endpoint: http://frontend-nginx:80
+  # jaeger:
+  #   protocols:
+  #     grpc:
+  #       endpoint: ${env:MY_POD_IP}:14250
+  #     thrift_compact:
+  #       endpoint: ${env:MY_POD_IP}:6831
+  #     thrift_http:
+  #       endpoint: ${env:MY_POD_IP}:14268
+  # k8s_cluster:
+  #   collection_interval: 10s
+  # k8sobjects:
+  #   objects:
+  #   - exclude_watch_type:
+  #     - DELETED
+  #     group: events.k8s.io
+  #     mode: watch
+  #     name: events
+  # kubeletstats:
+  #   collection_interval: 10s
+  #   auth_type: 'serviceAccount'
+  #   endpoint: '${env:K8S_NODE_NAME}:10250'
+  #   insecure_skip_verify: true
+  #   metric_groups:
+  #     - node
+  #     - pod
+  #     - container
   otlp:
     protocols:
       grpc:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
-
-processors:
-  batch:
-    timeout: 1s
-    send_batch_size: 1024
-    send_batch_max_size: 2048
-
-  resource:
-    attributes:
-      - key: deployment.environment
-        value: development
-        action: upsert
-
-  attributes:
-    actions:
-      - key: http.url
-        action: update
-        from_attribute: http.target
-      - key: service.namespace
-        value: ecommerce
-        action: insert
-
-exporters:
-  logging:
-    loglevel: info
-
-  jaeger:
-    endpoint: jaeger:14250
-    tls:
-      insecure: true
-
-  prometheus:
-    endpoint: "0.0.0.0:8889"
-    namespace: ecommerce
-    const_labels:
-      environment: development
-
-  otlp/jaeger:
-    endpoint: jaeger:4317
-    tls:
-      insecure: true
-
-  elasticsearch/traces:
-    endpoints: [http://opensearch:9200]
-    traces_index: otel-traces
-    sending_queue:
-      enabled: true
-    retry_on_failure:
-      enabled: true
-    
-  elasticsearch/metrics:
-    endpoints: [http://opensearch:9200]
-    metrics_index: otel-metrics
-    sending_queue:
-      enabled: true
-    retry_on_failure:
-      enabled: true
-
-  elasticsearch/logs:
-    endpoints: [http://opensearch:9200]
-    logs_index: otel-logs
-    sending_queue:
-      enabled: true
-    retry_on_failure:
-      enabled: true
-
-extensions:
-  health_check:
-    endpoint: :13133
-  zpages:
-    endpoint: :55679
-  pprof:
-    endpoint: :1777
-
+  # prometheus:
+  #   config:
+  #     scrape_configs:
+  #     - job_name: opentelemetry-collector
+  #       scrape_interval: 10s
+  #       static_configs:
+  #       - targets:
+  #         - ${env:MY_POD_IP}:8888
+  # redis:
+  #   collection_interval: 10s
+  #   endpoint: valkey-cart:6379
+  # zipkin:
+  #   endpoint: ${env:MY_POD_IP}:9411
 service:
-  extensions: [health_check, zpages, pprof]
+  # extensions:
+  # - health_check
   pipelines:
-    traces:
-      receivers: [otlp]
-      processors: [batch, resource, attributes]
-      exporters: [logging, jaeger, otlp/jaeger, elasticsearch/traces]
-    metrics:
-      receivers: [otlp]
-      processors: [batch, resource]
-      exporters: [logging, prometheus, elasticsearch/metrics]
     logs:
-      receivers: [otlp]
-      processors: [batch, resource]
-      exporters: [logging, elasticsearch/logs]
+      exporters:
+      # - opensearch
+      - debug
+      - elasticsearch
+      processors:
+      # - k8sattributes
+      # - memory_limiter
+      # - resource
+      - batch
+      receivers:
+      - otlp
+      # - k8sobjects
+    metrics:
+      exporters:
+      # - otlphttp/prometheus
+      - debug
+      - elasticsearch
+      - prometheus
+      processors:
+      # - filter/metrics
+      # - k8sattributes
+      # - memory_limiter
+      # - resource
+      - cumulativetodelta
+      - batch
+      receivers:
+      #- httpcheck/frontend-proxy
+      # - redis
+      - otlp
+      - spanmetrics
+      # kubeletstats
+      #- k8s_cluster
+    traces:
+      exporters:
+      # - otlp
+      - debug
+      - spanmetrics
+      - elasticsearch
+      - otlp/jaeger
+      processors:
+      # - k8sattributes
+      # - memory_limiter
+      # - resource
+      # - transform
+      - batch
+      receivers:
+      - otlp
+      # - jaeger
+      # - zipkin
+  # telemetry:
+  #   metrics:
+  #     address: ${env:MY_POD_IP}:8888
+  #     level: none

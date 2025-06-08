@@ -2,6 +2,10 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Load rules once and periodically evaluate them
+rule_files:
+  - "prometheus-rules.yml"
+
 scrape_configs:
   - job_name: 'otel-collector'
     static_configs:
@@ -10,3 +14,20 @@ scrape_configs:
   - job_name: 'otel-collector-metrics'
     static_configs:
       - targets: ['otel-collector:8888']
+      
+  - job_name: 'jaeger'
+    static_configs:
+      - targets: ['jaeger:14269']  # Jaeger internal metrics
+    
+  # Scrape OpenTelemetry Collector's Prometheus exporter for span metrics
+  - job_name: 'span-metrics'
+    static_configs:
+      - targets: ['otel-collector:8889']
+    metric_relabel_configs:
+      # Add service name label for Jaeger SPM
+      - source_labels: [service_name]
+        target_label: service
+      - source_labels: [span_name]
+        target_label: operation
+      - source_labels: [span_kind]
+        target_label: span_kind

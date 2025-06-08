@@ -19,6 +19,9 @@ export interface TelemetryContext {
  */
 export interface TelemetryConfig {
   namespace?: string;
+  spanName?: string;  // Base span name for the service
+  metrics?: Record<string, 'counter' | 'histogram' | 'gauge'>;  // Metrics to initialize
+  attributes?: Record<string, any>;  // Static attributes for all operations
   autoInstrument?: {
     lifecycle?: boolean;
     signals?: boolean;
@@ -47,6 +50,8 @@ export interface TelemetryOptions {
 export interface TracedOptions<TArgs extends any[] = any[], TReturn = any> extends TelemetryOptions {
   trackerName?: string;
   warnOnSlowOperation?: number;
+  recordArgs?: boolean;
+  includeArgs?: boolean;
   attributes?: Record<string, any> | ((args: TArgs, result?: TReturn) => Record<string, any>);
 }
 

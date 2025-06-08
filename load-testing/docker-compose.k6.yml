@@ -6,12 +6,12 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      # Target URLs - adjust based on your setup
-      BASE_URL: ${BASE_URL:-http://host.docker.internal:4200}
-      FLAGD_URL: ${FLAGD_URL:-http://host.docker.internal:8013}
-      FLAGD_BROWSER_URL: ${FLAGD_BROWSER_URL:-http://host.docker.internal:8014}
-      USERS_API: ${USERS_API:-http://host.docker.internal:3001/api/users}
-      PRODUCTS_API: ${PRODUCTS_API:-http://host.docker.internal:3002/api/products}
+      # Target URLs - when using host network mode, use localhost
+      BASE_URL: ${BASE_URL:-http://localhost}
+      FLAGD_URL: ${FLAGD_URL:-http://localhost/flags}
+      FLAGD_BROWSER_URL: ${FLAGD_BROWSER_URL:-http://localhost/flags}
+      USERS_API: ${USERS_API:-http://localhost:3001/api/users}
+      PRODUCTS_API: ${PRODUCTS_API:-http://localhost:3002/api/products}
       
       # Test configuration
       TEST_TYPE: ${TEST_TYPE:-load}
@@ -55,8 +55,8 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      BASE_URL: ${BASE_URL:-http://host.docker.internal}
-      FLAGD_URL: ${FLAGD_URL:-http://host.docker.internal:8013}
+      BASE_URL: ${BASE_URL:-http://localhost}
+      FLAGD_URL: ${FLAGD_URL:-http://localhost/flags}
       TEST_TYPE: ${TEST_TYPE:-load}
       ENVIRONMENT: ${ENVIRONMENT:-docker}
     

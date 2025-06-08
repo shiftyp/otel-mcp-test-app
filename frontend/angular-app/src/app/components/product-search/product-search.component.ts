@@ -205,17 +205,20 @@ export class ProductSearchComponent implements OnInit {
     this.lastSearchTerm.set(term);
     
     try {
-      // Perform search
-      const response = await this.productService.searchProducts(term).toPromise();
+      // Update search parameter in service
+      this.productService.setSearch(term);
       
-      if (response) {
-        this.searchResults.set(response.products);
-        this.searchPerformed.set(true);
-        
-        // Cache results if optimization is enabled
-        if (optimization.cacheResults) {
-          this.cacheSearchResults(term, response.products);
-        }
+      // Wait a bit for the resource to update
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Get products from the signal
+      const products = this.productService.products();
+      this.searchResults.set(products);
+      this.searchPerformed.set(true);
+      
+      // Cache results if optimization is enabled
+      if (optimization.cacheResults) {
+        this.cacheSearchResults(term, products);
       }
     } finally {
       this.isValidating.set(false);

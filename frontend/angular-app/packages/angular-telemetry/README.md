@@ -565,6 +565,17 @@ Enable state transfer in the configurable service:
 }
 ```
 
+## Architecture Decision Records
+
+Detailed architectural decisions are documented in the [ADR directory](./docs/adr/). Key ADRs include:
+
+- [ADR-001: Decorator-Based Instrumentation](./docs/adr/001-decorator-based-instrumentation.md) - Foundation decorator approach
+- [ADR-006: Core Architecture](./docs/adr/006-core-architecture.md) - Service patterns and module structure
+- [ADR-007: SSR Architecture](./docs/adr/007-ssr-architecture.md) - Server-side rendering support
+- [ADR-008: Signal and Effect Tracing](./docs/adr/008-signal-effect-tracing.md) - Reactive primitive instrumentation
+
+See the [full ADR index](./docs/adr/) for all architectural decisions.
+
 ## License
 
 MIT

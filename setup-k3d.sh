@@ -5,8 +5,8 @@
 set -e
 
 CLUSTER_NAME="ecommerce"
-REGISTRY_NAME="k3d-registry.localhost"
-REGISTRY_PORT="5111"
+REGISTRY_NAME="localhost"
+REGISTRY_PORT="5000"
 
 echo "🚀 Setting up k3d cluster for e-commerce platform..."
 
@@ -36,7 +36,7 @@ k3d cluster create "$CLUSTER_NAME" \
     --agents 2 \
     --port "80:80@loadbalancer" \
     --port "443:443@loadbalancer" \
-    --registry-create "$REGISTRY_NAME:0.0.0.0:$REGISTRY_PORT" \
+    --registry-create "${CLUSTER_NAME}-registry:${REGISTRY_PORT}" \
     --k3s-arg "--disable=traefik@server:0" \
     --volume "$(pwd)/k8s:/k8s@all" \
     --wait
@@ -44,36 +44,216 @@ k3d cluster create "$CLUSTER_NAME" \
 echo "⏳ Waiting for cluster to be ready..."
 kubectl wait --for=condition=ready node --all --timeout=300s
 
-# Build and push images to local registry
+# Wait for registry to be ready
+echo "🔍 Checking registry health..."
+
+# Get the actual registry name created by k3d
+INTERNAL_REGISTRY_NAME="${CLUSTER_NAME}-registry"
+INTERNAL_REGISTRY_HOST="${REGISTRY_NAME}:${REGISTRY_PORT}"
+INTERNAL_REGISTRY_URL="${INTERNAL_REGISTRY_HOST}"
+
+# First check if registry container is running
+echo "  Checking registry container status..."
+if ! docker ps | grep -q "${INTERNAL_REGISTRY_NAME}"; then
+    echo "❌ Registry container is not running"
+    docker ps -a | grep registry
+    exit 1
+fi
+
+# Check registry health
+max_retries=30
+retry_count=0
+while true; do
+    retry_count=$((retry_count + 1))
+    if [ $retry_count -gt $max_retries ]; then
+        echo "❌ Registry failed to become ready after $max_retries attempts"
+        echo "  Registry logs:"
+        docker logs "${REGISTRY_NAME}" --tail 50
+        exit 1
+    fi
+    
+    # Try both localhost and registry name
+    if curl -s -f http://localhost:${REGISTRY_PORT}/v2/_catalog > /dev/null 2>&1; then
+        echo "✅ Registry is ready at localhost:${REGISTRY_PORT}!"
+        REGISTRY_URL="localhost:${REGISTRY_PORT}"
+        break
+    else
+        echo "  Waiting for registry (attempt $retry_count/$max_retries)..."
+        sleep 2
+    fi
+done
+
+# Pull and push external images to local registry
+echo "📥 Pulling and pushing external images to local registry..."
+
+# Function to pull and push external images with retry logic
+pull_and_push_image() {
+    local image=$1
+    local tag=${2:-latest}
+    local full_image="${image}:${tag}"
+    local registry_image="${REGISTRY_URL}/${image##*/}:local"
+    
+    echo "  → Processing ${full_image}..."
+    
+    # Pull image
+    echo "    - Pulling image..."
+    if ! docker pull "${full_image}"; then
+        echo "    ❌ Failed to pull ${full_image}"
+        return 1
+    fi
+    
+    # Tag image
+    echo "    - Tagging as ${registry_image}..."
+    docker tag "${full_image}" "${registry_image}"
+    
+    # Push with retry logic
+    echo "    - Pushing to local registry..."
+    local push_retries=5
+    local push_count=0
+    local push_success=false
+    
+    while [ $push_count -lt $push_retries ]; do
+        push_count=$((push_count + 1))
+        
+        if docker push "${registry_image}" 2>&1; then
+            push_success=true
+            break
+        else
+            if [ $push_count -lt $push_retries ]; then
+                echo "    ⚠️  Push failed (attempt $push_count/$push_retries), retrying in $((push_count * 2)) seconds..."
+                sleep $((push_count * 2))
+            fi
+        fi
+    done
+    
+    if [ "$push_success" = true ]; then
+        echo "  ✅ Successfully pushed ${image##*/}:${tag}"
+    else
+        echo "  ❌ Failed to push ${image##*/}:${tag} after $push_retries attempts"
+        return 1
+    fi
+    echo ""
+}
+
+# Pull and push all external images
+echo "📦 Processing external images..."
+pull_and_push_image "busybox" "latest"
+pull_and_push_image "ghcr.io/open-feature/flagd" "latest"
+pull_and_push_image "jaegertracing/all-in-one" "1.52"
+pull_and_push_image "mongo" "8"
+pull_and_push_image "nginx" "alpine"
+pull_and_push_image "opensearchproject/opensearch" "2.11.1"
+pull_and_push_image "opensearchproject/opensearch-dashboards" "2.11.1"
+pull_and_push_image "otel/opentelemetry-collector-contrib" "0.126.0"
+pull_and_push_image "postgres" "16-alpine"
+pull_and_push_image "redis" "7-alpine"
+
+# Function to build and push application images
+build_and_push_app() {
+    local app_name=$1
+    local app_path=$2
+    local image_name="${app_name}:local"
+    local registry_image="${REGISTRY_URL}/${app_name}:local"
+    
+    echo "🔨 Building ${app_name}..."
+    
+    # Build image
+    if ! docker build -t "${image_name}" "${app_path}"; then
+        echo "❌ Failed to build ${app_name}"
+        return 1
+    fi
+    
+    # Tag image
+    docker tag "${image_name}" "${registry_image}"
+    
+    # Push with retry logic
+    local push_retries=3
+    local push_count=0
+    local push_success=false
+    
+    while [ $push_count -lt $push_retries ]; do
+        push_count=$((push_count + 1))
+        echo "  Pushing ${app_name} (attempt $push_count/$push_retries)..."
+        
+        if docker push "${registry_image}" 2>&1; then
+            push_success=true
+            echo "✅ Successfully pushed ${app_name}"
+            break
+        else
+            if [ $push_count -lt $push_retries ]; then
+                echo "  ⚠️  Push failed, retrying in 3 seconds..."
+                sleep 3
+            fi
+        fi
+    done
+    
+    if [ "$push_success" = false ]; then
+        echo "❌ Failed to push ${app_name} after $push_retries attempts"
+        return 1
+    fi
+    echo ""
+}
+
+# Build and push application images
 echo "🏗️  Building Docker images..."
+build_and_push_app "user-service" "./backend/user-service"
+build_and_push_app "product-service" "./backend/product-service"
+build_and_push_app "frontend" "./frontend/angular-app"
 
-# Build user-service
-echo "Building user-service..."
-docker build -t user-service:local ./backend/user-service
-docker tag user-service:local "$REGISTRY_NAME:$REGISTRY_PORT/user-service:local"
-docker push "$REGISTRY_NAME:$REGISTRY_PORT/user-service:local"
+# Verify all images are available in registry
+echo "🔍 Verifying images in registry..."
+verify_registry_images() {
+    local failed=0
+    
+    # List of all images we expect in the registry
+    local images=(
+        "busybox:local"
+        "flagd:local"
+        "all-in-one:local"
+        "mongo:local"
+        "nginx:local"
+        "opensearch:local"
+        "opensearch-dashboards:local"
+        "opentelemetry-collector-contrib:local"
+        "postgres:local"
+        "redis:local"
+        "user-service:local"
+        "product-service:local"
+        "frontend:local"
+    )
+    
+    echo "  Checking registry catalog..."
+    local catalog=$(curl -s http://${REGISTRY_URL}/v2/_catalog)
+    echo "  Registry contains: ${catalog}"
+    
+    for image_tag in "${images[@]}"; do
+        local image_name="${image_tag%:*}"
+        local tag="${image_tag#*:}"
+        
+        # Check if image exists in registry
+        if curl -s -f -I "http://${REGISTRY_URL}/v2/${image_name}/manifests/${tag}" > /dev/null 2>&1; then
+            echo "  ✅ ${image_name}:${tag} - OK"
+        else
+            echo "  ❌ ${image_name}:${tag} - NOT FOUND"
+            failed=$((failed + 1))
+        fi
+    done
+    
+    if [ $failed -gt 0 ]; then
+        echo ""
+        echo "⚠️  Warning: ${failed} images are missing from the registry"
+        echo "  The deployment may fail. Consider re-running the setup."
+    else
+        echo ""
+        echo "✅ All images verified in registry!"
+    fi
+}
 
-# Build product-service
-echo "Building product-service..."
-docker build -t product-service:local ./backend/product-service
-docker tag product-service:local "$REGISTRY_NAME:$REGISTRY_PORT/product-service:local"
-docker push "$REGISTRY_NAME:$REGISTRY_PORT/product-service:local"
+verify_registry_images
 
-# Build frontend
-echo "Building frontend..."
-docker build -t frontend:local ./frontend/angular-app
-docker tag frontend:local "$REGISTRY_NAME:$REGISTRY_PORT/frontend:local"
-docker push "$REGISTRY_NAME:$REGISTRY_PORT/frontend:local"
-
-# Update image references in Kubernetes manifests to use local registry
-echo "📝 Updating Kubernetes manifests for local registry..."
-sed -i.bak "s|image: user-service:local|image: $REGISTRY_NAME:$REGISTRY_PORT/user-service:local|g" k8s/base/user-service.yaml
-sed -i.bak "s|image: product-service:local|image: $REGISTRY_NAME:$REGISTRY_PORT/product-service:local|g" k8s/base/product-service.yaml
-sed -i.bak "s|image: frontend:local|image: $REGISTRY_NAME:$REGISTRY_PORT/frontend:local|g" k8s/base/frontend.yaml
-
-# Apply Kubernetes manifests
-echo "🚀 Deploying to Kubernetes..."
-kubectl apply -k k8s/base/
+# Apply Kubernetes manifests using dev overlay
+echo "🚀 Deploying to Kubernetes with dev overlay..."
+kubectl apply -k k8s/overlays/dev/
 
 # Wait for deployments to be ready
 echo "⏳ Waiting for deployments to be ready..."

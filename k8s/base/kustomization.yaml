@@ -6,7 +6,6 @@ namespace: ecommerce
 resources:
   - namespace.yaml
   - secrets.yaml
-  - configmaps.yaml
   - postgres.yaml
   - mongodb.yaml
   - redis.yaml
@@ -17,8 +16,6 @@ resources:
   - flagd-realistic.yaml
   - user-service.yaml
   - product-service.yaml
+  - cart-service.yaml
   - frontend.yaml
-
-commonLabels:
-  app.kubernetes.io/part-of: ecommerce-platform
-  app.kubernetes.io/managed-by: kustomize
+  - nginx.yaml

@@ -31,7 +31,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: ecommerce-registry:5000/postgres:local
           ports:
             - containerPort: 5432
           env:

@@ -1,3 +1,4 @@
+import { isSignal } from '@angular/core';
 import { getTelemetryContext } from './telemetry.decorator';
 import { 
   TracedOptions, 
@@ -41,26 +42,25 @@ import {
  * ```
  */
 
-// Overload for no type parameters
+// Overload for no type parameters - works for all decorator types
 export function Traced(
   options?: TracedOptions<any[], any> | string
-): MethodDecorator;
+): MethodDecorator & PropertyDecorator & ClassDecorator;
 
 // Overload for explicit array types
 export function Traced<TArgs extends any[], TReturn>(
   options?: TracedOptions<TArgs, UnwrapPromise<TReturn>> | string
-): MethodDecorator;
+): MethodDecorator & PropertyDecorator;
 
 // Overload for class-based type inference
 export function Traced<T extends object, K extends keyof T>(
   options?: TracedOptions<MethodArgs<T, K>, UnwrappedReturnType<T, K>> | string
-): MethodDecorator;
+): MethodDecorator & PropertyDecorator;
 
 // Implementation
 export function Traced(
   options?: TracedOptions<any[], any> | string
 ): any {
-  // Overload for legacy support
   return function (target: any, propertyKey?: string | symbol, descriptor?: PropertyDescriptor | number): any {
     // Normalize options
     const opts = typeof options === 'string' 
@@ -79,7 +79,8 @@ export function Traced(
     
     // Property decorator (for signals)
     if (propertyKey && !descriptor) {
-      return traceProperty(target, propertyKey, opts as TracedOptions<any, any>);
+      traceProperty(target, propertyKey, opts as TracedOptions<any, any>);
+      return;
     }
     
     // Parameter decorator (not implemented yet)
@@ -206,82 +207,121 @@ function traceMethod<TArgs extends any[] = any[], TReturn = any>(
 
 /**
  * Trace a property (signals, computed, effects)
+ * This works by replacing the property descriptor to intercept the initial assignment
  */
 function traceProperty(target: any, propertyKey: string | symbol, options: TracedOptions): void {
-  let value: any;
   const context = getTelemetryContext(target, String(propertyKey));
   const baseName = options.spanName || context.fullName || String(propertyKey);
   
-  const getter = function(this: any) {
-    return value;
-  };
-  
-  const setter = function(this: any, newValue: any) {
-    const telemetryService = (this as any)['telemetryService'] || (this as any)['_telemetryService'];
-    
-    if (!telemetryService) {
-      value = newValue;
-      return;
-    }
-    
-    // Detect signal types and apply appropriate tracing
-    if (isSignal(newValue)) {
-      value = telemetryService.createTracedSignal(
-        newValue(),  // Get initial value
-        baseName,
-        options as SignalTraceOptions
-      );
-    } else if (isComputed(newValue)) {
-      value = telemetryService.createTracedComputed(
-        newValue,  // The computation function
-        baseName,
-        options as ComputedTraceOptions
-      );
-    } else if (isEffect(newValue)) {
-      value = telemetryService.createTracedEffect(
-        newValue,  // The effect function
-        baseName,
-        options as EffectTraceOptions
-      );
-    } else {
-      // Regular property
-      value = newValue;
-    }
-  };
-  
-  // Delete existing property
-  if (delete (target as any)[propertyKey]) {
-    Object.defineProperty(target, propertyKey, {
-      get: getter,
-      set: setter,
-      enumerable: true,
-      configurable: true
-    });
+  // Store the property key and options on the prototype for later use
+  const tracedPropsKey = Symbol.for('__traced_properties__');
+  if (!target[tracedPropsKey]) {
+    target[tracedPropsKey] = new Map();
   }
+  target[tracedPropsKey].set(propertyKey, { baseName, options });
+  
+  // Create a unique symbol for storing the actual value
+  const valueKey = Symbol.for(`__traced_${String(propertyKey)}__`);
+  
+  // Define the property with getter/setter
+  Object.defineProperty(target, propertyKey, {
+    get(this: any) {
+      return this[valueKey];
+    },
+    set(this: any, newValue: any) {
+      const telemetryService = this['telemetryService'] || this['_telemetryService'];
+      
+      if (!telemetryService || !telemetryService.createTracedSignal) {
+        // No telemetry service available, just store the value
+        this[valueKey] = newValue;
+        return;
+      }
+      
+      // Check what type of value we're dealing with
+      if (isSignal(newValue)) {
+        // Check if it's a writable signal or readonly
+        if (isWritableSignal(newValue)) {
+          // It's a writable signal - wrap it with telemetry
+          const tracedSignal = telemetryService.createTracedSignal(
+            newValue(),  // Get initial value from the signal
+            baseName,
+            options as SignalTraceOptions
+          );
+          this[valueKey] = tracedSignal;
+        } else {
+          // It's a readonly signal (including computed) - wrap it in a traced computed for telemetry
+          if (telemetryService.createTracedComputed) {
+            const tracedReadonlySignal = telemetryService.createTracedComputed(
+              newValue,  // Pass the signal function itself to maintain reactivity
+              baseName,
+              {
+                ...options,
+                spanName: options.spanName || `${baseName}.read`
+              } as ComputedTraceOptions
+            );
+            this[valueKey] = tracedReadonlySignal;
+          } else {
+            // Fallback if telemetry service doesn't support computed
+            this[valueKey] = newValue;
+            console.debug(`@Traced: ${baseName} is a readonly signal, passing through without wrapping`);
+          }
+        }
+      } else if (isEffect(newValue)) {
+        // It's an effect
+        // Effects are created differently - they return an EffectRef
+        // We can't directly wrap the effect, but we can track it
+        telemetryService.createTracedEffect(
+          () => {
+            // We can't directly access the effect function, but we can monitor its lifecycle
+            console.log(`Effect ${baseName} is running`);
+          },
+          baseName,
+          options as EffectTraceOptions
+        );
+        // Store the original effect ref
+        this[valueKey] = newValue;
+      } else {
+        // Regular property or non-traced value
+        this[valueKey] = newValue;
+      }
+    },
+    enumerable: true,
+    configurable: true
+  });
 }
 
 /**
- * Check if value is a signal
+ * Check if value is a writable signal
  */
-function isSignal(value: any): boolean {
-  return typeof value === 'function' && 
-         (value.name === 'signal' || value.toString().includes('signal'));
+function isWritableSignal(value: any): boolean {
+  return isSignal(value) && 'set' in value && 'update' in value;
 }
 
 /**
- * Check if value is a computed
+ * Check if value is a readonly signal (Signal but not WritableSignal)
  */
-function isComputed(value: any): boolean {
-  return typeof value === 'function' && 
-         (value.name === 'computed' || value.toString().includes('computed'));
+function isReadonlySignal(value: any): boolean {
+  return isSignal(value) && !('set' in value) && !('update' in value);
+}
+
+/**
+ * Check if value is a computed signal
+ * Note: Computed signals are a type of readonly signal in Angular
+ */
+function isComputedSignal(value: any): boolean {
+  // Computed signals are signals without set/update methods
+  // We can't easily distinguish computed from other readonly signals without accessing internal symbols
+  // For our purposes, we'll treat all readonly signals similarly
+  return isReadonlySignal(value);
 }
 
 /**
  * Check if value is an effect
  */
 function isEffect(value: any): boolean {
-  return typeof value === 'function' && 
-         (value.name === 'effect' || value.toString().includes('effect'));
+  return typeof value === 'object' && 
+         value !== null &&
+         'destroy' in value;
 }
 
 /**

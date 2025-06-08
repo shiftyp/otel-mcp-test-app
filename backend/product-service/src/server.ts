@@ -4,6 +4,8 @@ import { OpenFeature } from '@openfeature/server-sdk';
 import { FlagdProvider } from '@openfeature/flagd-provider';
 import productRoutes from './api/productRoutes';
 import { config } from './config';
+import { initializeDatabase } from './db';
+import { initializeRedis } from './services/redis';
 
 const app: Express = express();
 const tracer = trace.getTracer('product-service');
@@ -81,6 +83,15 @@ app.listen(PORT, async () => {
   console.log(`Product service running on port ${PORT}`);
   console.log(`Environment: ${config.nodeEnv}`);
   console.log('OpenTelemetry instrumentation enabled');
+  
+  // Initialize database connection
+  try {
+    await initializeDatabase();
+    await initializeRedis();
+  } catch (error) {
+    console.error('Failed to initialize services:', error);
+    process.exit(1);
+  }
   
   // Wait for feature flag provider to be ready
   try {

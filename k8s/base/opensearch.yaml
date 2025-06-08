@@ -49,7 +49,7 @@ spec:
     spec:
       initContainers:
         - name: fix-permissions
-          image: busybox
+          image: ecommerce-registry:5000/busybox:local
           command: ["sh", "-c", "chown -R 1000:1000 /usr/share/opensearch/data"]
           volumeMounts:
             - name: opensearch-data
@@ -57,18 +57,18 @@ spec:
           securityContext:
             privileged: true
         - name: increase-vm-max-map
-          image: busybox
+          image: ecommerce-registry:5000/busybox:local
           command: ["sysctl", "-w", "vm.max_map_count=262144"]
           securityContext:
             privileged: true
         - name: increase-fd-ulimit
-          image: busybox
+          image: ecommerce-registry:5000/busybox:local
           command: ["sh", "-c", "ulimit -n 65536"]
           securityContext:
             privileged: true
       containers:
         - name: opensearch
-          image: opensearchproject/opensearch:2.11.1
+          image: ecommerce-registry:5000/opensearch:local
           ports:
             - containerPort: 9200
               name: http
@@ -138,7 +138,7 @@ spec:
     spec:
       containers:
         - name: opensearch-dashboards
-          image: opensearchproject/opensearch-dashboards:2.11.1
+          image: ecommerce-registry:5000/opensearch-dashboards:local
           ports:
             - containerPort: 5601
           env:

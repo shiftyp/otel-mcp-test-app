@@ -68,7 +68,7 @@ import { Product } from '../../models/product.model';
             <img 
               [src]="getProductImage(product)" 
               [loading]="performanceMode() === 'aggressive' ? 'lazy' : 'eager'"
-              [alt]="product.images[0]?.alt || product.name"
+              [alt]="product.images[0].alt || product.name"
             />
           </div>
           
@@ -259,8 +259,9 @@ export class ProductListWithFlagsComponent implements OnInit {
     );
     
     // Pagination strategy for improved scrolling
-    this.featureFlagService.getObjectFlag('paginationStrategy', 'traditional').subscribe(
-      strategy => {
+    this.featureFlagService.getBooleanFlag('paginationStrategy', false).subscribe(
+      isInfinite => {
+        const strategy = isInfinite ? 'infinite' : 'traditional';
         this.paginationStrategy.set(strategy);
         if (strategy === 'infinite') {
           this.setupInfiniteScroll();
@@ -414,11 +415,13 @@ export class ProductListWithFlagsComponent implements OnInit {
   private loadMoreProducts(): void {
     if (this.paginationStrategy() === 'infinite') {
       const currentPage = this.currentPage();
-      this.productService.getProducts({ page: currentPage + 1 }).subscribe(response => {
-        // Track loaded products for optimization
-        response.products.forEach(p => this.loadedProductIds.add(p.id));
-        this.currentPage.set(currentPage + 1);
-      });
+      // Update service params to trigger resource reload
+      this.productService.setPage(currentPage + 1);
+      
+      // Track loaded products using the products signal
+      const products = this.productService.products();
+      products.forEach(p => this.loadedProductIds.add(p.id));
+      this.currentPage.set(currentPage + 1);
     }
   }
 
@@ -439,7 +442,9 @@ export class ProductListWithFlagsComponent implements OnInit {
   }
 
   loadProducts(): void {
-    this.productService.getProducts().subscribe();
+    // Products are automatically loaded by the resource
+    // Just ensure the service is initialized
+    this.productService.reload();
   }
 
   onSearchChange(): void {

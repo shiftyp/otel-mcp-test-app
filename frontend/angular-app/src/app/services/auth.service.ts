@@ -1,21 +1,25 @@
 import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, tap } from 'rxjs';
-import { environment } from '../../environments/environment';
+import { injectEnvironment } from '../providers/environment.provider';
 
 export interface User {
   id: string;
+  username: string;
   email: string;
   firstName?: string;
   lastName?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface LoginRequest {
-  email: string;
+  username: string;
   password: string;
 }
 
 export interface RegisterRequest {
+  username: string;
   email: string;
   password: string;
   firstName?: string;
@@ -31,7 +35,8 @@ export interface AuthResponse {
   providedIn: 'root'
 })
 export class AuthService {
-  private apiUrl = `${environment.apiUrl}/users`;
+  private environment = injectEnvironment();
+  private apiUrl = this.environment.userApiUrl || `${this.environment.apiUrl}/users`;
   
   // Signals for reactive auth state
   private currentUserSignal = signal<User | null>(null);
@@ -79,6 +84,27 @@ export class AuthService {
       return localStorage.getItem('authToken');
     }
     return null;
+  }
+
+  updateProfile(userId: string, updates: Partial<User>): Observable<User> {
+    return this.http.put<User>(`${this.apiUrl}/${userId}`, updates)
+      .pipe(
+        tap(updatedUser => {
+          this.currentUserSignal.set(updatedUser);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+          }
+        })
+      );
+  }
+
+  deleteAccount(userId: string): Observable<void> {
+    return this.http.delete<void>(`${this.apiUrl}/${userId}`)
+      .pipe(
+        tap(() => {
+          this.logout();
+        })
+      );
   }
 
   private handleAuthResponse(response: AuthResponse): void {

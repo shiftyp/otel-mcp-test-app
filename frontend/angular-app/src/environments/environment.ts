@@ -1,6 +1,9 @@
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:3000/api',
-  otelCollectorUrl: 'http://localhost:4318/v1/traces',
-  flagdUrl: 'http://localhost:8013'
+  apiUrl: '/api',
+  userApiUrl: '/api/users',
+  productApiUrl: '/api/products',
+  cartApiUrl: '/api/cart',
+  otelCollectorUrl: '/telemetry',
+  flagdUrl: '/flags'
 };

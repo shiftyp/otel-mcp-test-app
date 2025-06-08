@@ -265,15 +265,19 @@ export class CartWithTelemetryComponent implements OnInit {
     value: () => 3 // We're adding 3 sample items
   })
   addSampleItems() {
-    this.productService.getProducts({ limit: 3 }).subscribe(response => {
-      const sampleItems: CartItem[] = response.products.map(product => ({
+    // Use the products signal directly from the service
+    const products = this.productService.products();
+    const sampleProducts = products.slice(0, 3);
+    
+    if (sampleProducts.length > 0) {
+      const sampleItems: CartItem[] = sampleProducts.map(product => ({
         product,
         quantity: Math.floor(Math.random() * 3) + 1
       }));
       
       this.cartItems.set(sampleItems);
       this.telemetry.log('Added sample items to cart', { count: sampleItems.length });
-    });
+    }
   }
 
   @Traced<CartWithTelemetryComponent, 'updateQuantity'>({

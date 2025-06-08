@@ -67,6 +67,121 @@
         }
       },
       "defaultVariant": "default"
+    },
+    "dataFetchStrategy": {
+      "state": "ENABLED",
+      "variants": {
+        "standard": "standard",
+        "optimized": "optimized",
+        "cached": "cached"
+      },
+      "defaultVariant": "standard"
+    },
+    "cacheWarmupStrategy": {
+      "state": "ENABLED",
+      "variants": {
+        "none": {
+          "mode": "on-demand",
+          "ttl": 300
+        },
+        "lazy": {
+          "mode": "background",
+          "ttl": 600
+        },
+        "eager": {
+          "mode": "preload",
+          "ttl": 900
+        }
+      },
+      "defaultVariant": "none"
+    },
+    "mobileCorsPolicy": {
+      "state": "ENABLED",
+      "variants": {
+        "restricted": false,
+        "permissive": true
+      },
+      "defaultVariant": "restricted"
+    },
+    "darkMode": {
+      "state": "ENABLED",
+      "variants": {
+        "off": false,
+        "on": true
+      },
+      "defaultVariant": "off"
+    },
+    "newCheckoutFlow": {
+      "state": "ENABLED",
+      "variants": {
+        "disabled": false,
+        "enabled": true
+      },
+      "defaultVariant": "disabled",
+      "targeting": {
+        "fractional": [
+          ["userId"],
+          ["disabled", 25],
+          ["enabled", 75]
+        ]
+      }
+    },
+    "performanceMode": {
+      "state": "ENABLED",
+      "variants": {
+        "normal": {
+          "mode": "normal"
+        },
+        "aggressive": {
+          "mode": "aggressive"
+        }
+      },
+      "defaultVariant": "normal"
+    },
+    "recommendationEngine": {
+      "state": "ENABLED",
+      "variants": {
+        "v1": "v1",
+        "v2": "v2",
+        "v3": "v3"
+      },
+      "defaultVariant": "v1"
+    },
+    "searchOptimization": {
+      "state": "ENABLED",
+      "variants": {
+        "btree": {
+          "algorithm": "btree",
+          "cacheResults": false
+        },
+        "fuzzy": {
+          "algorithm": "fuzzy",
+          "cacheResults": true
+        }
+      },
+      "defaultVariant": "btree"
+    },
+    "inventoryAlgorithm": {
+      "state": "ENABLED",
+      "variants": {
+        "standard": "standard",
+        "optimized": "optimized"
+      },
+      "defaultVariant": "standard"
+    },
+    "networkResilience": {
+      "state": "ENABLED",
+      "variants": {
+        "basic": {
+          "retryAttempts": 3,
+          "timeout": 5000
+        },
+        "enhanced": {
+          "retryAttempts": 5,
+          "timeout": 10000
+        }
+      },
+      "defaultVariant": "basic"
     }
   }
 }

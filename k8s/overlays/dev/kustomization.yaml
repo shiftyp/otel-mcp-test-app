@@ -1,0 +1,20 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: ecommerce
+
+resources:
+  - ../../base
+
+patches:
+  - path: image-pull-policy-patch.yaml
+    target:
+      kind: Deployment
+      labelSelector: "app"
+      
+# Optional: Add dev-specific configurations
+configMapGenerator:
+  - name: dev-config
+    literals:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug

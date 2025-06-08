@@ -341,45 +341,39 @@ export class ConfigurableTelemetryService implements ITelemetryService {
       asReadonly: () => baseSignal.asReadonly()
     };
     
-    // Create a proxy that handles both function calls and property access
-    const self = this;
-    return new Proxy(baseSignal, {
-      get(target, prop) {
-        if (prop === 'set') return tracedSignal.set;
-        if (prop === 'update') return tracedSignal.update;
-        if (prop === 'asReadonly') return tracedSignal.asReadonly;
-        return target[prop as keyof WritableSignal<T>];
-      },
-      apply(target) {
-        // When called as a function, execute traced read logic
-        if (opts.recordMetrics) {
-          self.recordMetricInternal('signal_reads', 1, {
-            signal_name: name,
-            has_parent: !!trace.getActiveSpan(),
-            platform: self.isServer ? 'server' : 'browser'
-          });
-        }
-        
-        const span = createSpan('read');
-        if (!span) return target();
-        
-        try {
-          const value = target();
-          if (opts.attributes && value !== undefined) {
-            const attrs = opts.attributes(value);
-            span.setAttributes(attrs);
-          }
-          span.setStatus({ code: SpanStatusCode.OK });
-          return value;
-        } catch (error) {
-          span.recordException(error as Error);
-          span.setStatus({ code: SpanStatusCode.ERROR });
-          throw error;
-        } finally {
-          span.end();
-        }
+    // Create a wrapped signal that intercepts read operations
+    const wrappedSignal = () => {
+      // When called as a function, execute traced read logic
+      if (opts.recordMetrics) {
+        this.recordMetricInternal('signal_reads', 1, {
+          signal_name: name,
+          has_parent: !!trace.getActiveSpan(),
+          platform: this.isServer ? 'server' : 'browser'
+        });
       }
-    }) as WritableSignal<T>;
+      
+      const span = createSpan('read');
+      if (!span) return baseSignal();
+      
+      try {
+        const value = baseSignal();
+        if (opts.attributes && value !== undefined) {
+          const attrs = opts.attributes(value);
+          span.setAttributes(attrs);
+        }
+        span.setStatus({ code: SpanStatusCode.OK });
+        return value;
+      } catch (error) {
+        span.recordException(error as Error);
+        span.setStatus({ code: SpanStatusCode.ERROR });
+        throw error;
+      } finally {
+        span.end();
+      }
+    };
+    
+    // Copy all signal methods and properties
+    return Object.assign(wrappedSignal, baseSignal, tracedSignal);
   }
   
   createTracedComputed<T>(

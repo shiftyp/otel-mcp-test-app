@@ -1,8 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, inject, OnInit } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { HeaderComponent } from './components/header/header.component';
 import { CartService } from './services/cart.service';
+import { NavigationTelemetryService } from './services/navigation-telemetry.service';
+import { ResourceTimingService } from './services/resource-timing.service';
 
 @Component({
   selector: 'app-root',
@@ -94,11 +96,19 @@ import { CartService } from './services/cart.service';
     }
   `]
 })
-export class AppComponent {
+export class AppComponent implements OnInit {
   title = 'E-Commerce Platform';
   cartItemCount = signal(0);
+  
+  private cartService = inject(CartService);
+  private navigationTelemetry = inject(NavigationTelemetryService);
+  private resourceTiming = inject(ResourceTimingService);
 
-  constructor(private cartService: CartService) {
+  ngOnInit(): void {
+    // Initialize telemetry services
+    this.navigationTelemetry.initialize();
+    this.resourceTiming.initialize();
+    
     // Subscribe to cart changes using signals
     this.cartService.getCartItemCount().subscribe(count => {
       this.cartItemCount.set(count);

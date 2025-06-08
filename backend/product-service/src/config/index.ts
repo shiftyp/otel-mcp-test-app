@@ -1,18 +1,19 @@
-import * as dotenv from 'dotenv';
+import dotenv from 'dotenv';
 
 dotenv.config();
 
 export const config = {
-  port: process.env.PORT || 3002,
+  port: process.env.PORT || 3003,
   nodeEnv: process.env.NODE_ENV || 'development',
   
-  mongodb: {
-    uri: process.env.MONGODB_URI || 'mongodb://localhost:27017/ecommerce_products',
-    options: {
-      maxPoolSize: 10,
-      minPoolSize: 2,
-      serverSelectionTimeoutMS: 5000,
-    },
+  database: {
+    host: process.env.DATABASE_HOST || 'localhost',
+    port: parseInt(process.env.DATABASE_PORT || '5432', 10),
+    database: process.env.DATABASE_NAME || 'ecommerce_products',
+    user: process.env.DATABASE_USER || 'postgres',
+    password: process.env.DATABASE_PASSWORD || 'postgres123',
+    max: 20, // max number of clients in the pool
+    idleTimeoutMillis: 30000, // how long a client is allowed to remain idle before being closed
   },
   
   redis: {

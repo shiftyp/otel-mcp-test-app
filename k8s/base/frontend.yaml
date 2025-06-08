@@ -13,20 +13,6 @@ spec:
   type: ClusterIP
 
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: frontend-nginx
-  namespace: ecommerce
-spec:
-  selector:
-    app: frontend-nginx
-  ports:
-    - port: 80
-      targetPort: 80
-  type: ClusterIP
-
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -44,8 +30,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: frontend:local
-          imagePullPolicy: Never
+          image: localhost:5000/frontend:local
           ports:
             - containerPort: 4000
           env:
@@ -53,6 +38,12 @@ spec:
               value: "production"
             - name: PORT
               value: "4000"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4318"
+            - name: OTEL_SERVICE_NAME
+              value: "ecommerce-frontend-ssr"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "service.namespace=ecommerce,deployment.environment=production"
           resources:
             requests:
               memory: "256Mi"
@@ -72,122 +63,3 @@ spec:
               port: 4000
             initialDelaySeconds: 10
             periodSeconds: 5
-
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: frontend-nginx
-  namespace: ecommerce
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: frontend-nginx
-  template:
-    metadata:
-      labels:
-        app: frontend-nginx
-    spec:
-      containers:
-        - name: nginx
-          image: nginx:alpine
-          ports:
-            - containerPort: 80
-          volumeMounts:
-            - name: nginx-config
-              mountPath: /etc/nginx/conf.d
-            - name: static-files
-              mountPath: /usr/share/nginx/html
-          resources:
-            requests:
-              memory: "128Mi"
-              cpu: "100m"
-            limits:
-              memory: "256Mi"
-              cpu: "200m"
-          livenessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 10
-            periodSeconds: 10
-          readinessProbe:
-            httpGet:
-              path: /
-              port: 80
-            initialDelaySeconds: 5
-            periodSeconds: 5
-      volumes:
-        - name: nginx-config
-          configMap:
-            name: nginx-config
-        - name: static-files
-          emptyDir: {}
-
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: nginx-config
-  namespace: ecommerce
-data:
-  default.conf: |
-    server {
-        listen 80;
-        server_name localhost;
-        root /usr/share/nginx/html;
-        index index.html;
-
-        # Gzip compression
-        gzip on;
-        gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-        # Security headers
-        add_header X-Frame-Options "SAMEORIGIN" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-XSS-Protection "1; mode=block" always;
-
-        # API proxy configuration
-        location /api/users {
-            proxy_pass http://user-service:3001/api/users;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host $host;
-            proxy_cache_bypass $http_upgrade;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        location /api/products {
-            proxy_pass http://product-service:3002/api/products;
-            proxy_http_version 1.1;
-            proxy_set_header Upgrade $http_upgrade;
-            proxy_set_header Connection 'upgrade';
-            proxy_set_header Host $host;
-            proxy_cache_bypass $http_upgrade;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-
-        # OpenTelemetry collector proxy
-        location /v1/traces {
-            proxy_pass http://otel-collector:4318/v1/traces;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-        }
-
-        # Angular routes
-        location / {
-            try_files $uri $uri/ /index.html;
-        }
-
-        # Cache static assets
-        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-            expires 1y;
-            add_header Cache-Control "public, immutable";
-        }
-    }
