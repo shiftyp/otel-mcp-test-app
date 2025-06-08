@@ -7,23 +7,25 @@ import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-web';
 import { metrics } from '@opentelemetry/api';
 import { registerInstrumentations } from './browser-instrumentation';
 // These will be loaded dynamically if available
-let FetchInstrumentation: any;
-let XMLHttpRequestInstrumentation: any;
+// HTTP instrumentations disabled - using custom Angular interceptors
+// let FetchInstrumentation: any;
+// let XMLHttpRequestInstrumentation: any;
 let DocumentLoadInstrumentation: any;
 let ZoneContextManager: any;
 let UserInteractionInstrumentation: any;
 
 // Load instrumentations dynamically
 const loadInstrumentations = async () => {
-  try {
-    const fetchModule = await import('@opentelemetry/instrumentation-fetch');
-    FetchInstrumentation = fetchModule.FetchInstrumentation;
-  } catch {}
+  // HTTP instrumentations disabled - using custom Angular interceptors
+  // try {
+  //   const fetchModule = await import('@opentelemetry/instrumentation-fetch');
+  //   FetchInstrumentation = fetchModule.FetchInstrumentation;
+  // } catch {}
   
-  try {
-    const xhrModule = await import('@opentelemetry/instrumentation-xml-http-request');
-    XMLHttpRequestInstrumentation = xhrModule.XMLHttpRequestInstrumentation;
-  } catch {}
+  // try {
+  //   const xhrModule = await import('@opentelemetry/instrumentation-xml-http-request');
+  //   XMLHttpRequestInstrumentation = xhrModule.XMLHttpRequestInstrumentation;
+  // } catch {}
   
   try {
     const docModule = await import('@opentelemetry/instrumentation-document-load');
@@ -192,24 +194,27 @@ export async function initializeBrowserTelemetry(config: BrowserTelemetryConfig)
   if (config.enableAutoInstrumentation !== false) {
     const instrumentations = [];
     
-    // Fetch instrumentation
-    if (FetchInstrumentation && config.instrumentations?.fetch?.enabled !== false) {
-      const fetchConfig = config.instrumentations?.fetch || {};
-      instrumentations.push(new FetchInstrumentation({
-        propagateTraceHeaderCorsUrls: fetchConfig.propagateTraceHeaderCorsUrls || [/.*/],
-        clearTimingResources: fetchConfig.clearTimingResources !== false,
-        applyCustomAttributesOnSpan: fetchConfig.applyCustomAttributesOnSpan,
-      }));
-    }
+    // HTTP instrumentation disabled - using custom Angular interceptors instead
+    // This prevents double counting of HTTP spans
     
-    // XMLHttpRequest instrumentation
-    if (XMLHttpRequestInstrumentation && config.instrumentations?.xmlHttpRequest?.enabled !== false) {
-      const xhrConfig = config.instrumentations?.xmlHttpRequest || {};
-      instrumentations.push(new XMLHttpRequestInstrumentation({
-        propagateTraceHeaderCorsUrls: xhrConfig.propagateTraceHeaderCorsUrls || [/.*/],
-        clearTimingResources: xhrConfig.clearTimingResources !== false,
-      }));
-    }
+    // Fetch instrumentation - DISABLED
+    // if (FetchInstrumentation && config.instrumentations?.fetch?.enabled !== false) {
+    //   const fetchConfig = config.instrumentations?.fetch || {};
+    //   instrumentations.push(new FetchInstrumentation({
+    //     propagateTraceHeaderCorsUrls: fetchConfig.propagateTraceHeaderCorsUrls || [/.*/],
+    //     clearTimingResources: fetchConfig.clearTimingResources !== false,
+    //     applyCustomAttributesOnSpan: fetchConfig.applyCustomAttributesOnSpan,
+    //   }));
+    // }
+    
+    // XMLHttpRequest instrumentation - DISABLED
+    // if (XMLHttpRequestInstrumentation && config.instrumentations?.xmlHttpRequest?.enabled !== false) {
+    //   const xhrConfig = config.instrumentations?.xmlHttpRequest || {};
+    //   instrumentations.push(new XMLHttpRequestInstrumentation({
+    //     propagateTraceHeaderCorsUrls: xhrConfig.propagateTraceHeaderCorsUrls || [/.*/],
+    //     clearTimingResources: xhrConfig.clearTimingResources !== false,
+    //   }));
+    // }
     
     // Document load instrumentation
     if (DocumentLoadInstrumentation && config.instrumentations?.documentLoad?.enabled !== false) {

@@ -1,25 +1,34 @@
-# [Title of the ADR]
+# ADR-XXX: [Title]
 
 ## Status
-
 [Proposed | Accepted | Deprecated | Superseded | Rejected]
 
 ## Context
-
-[Describe the context and problem statement that led to this decision. What is the issue that we're seeing that is motivating this decision or change?]
+[Describe the context and problem statement that led to this decision. What is the issue that we're seeing that is motivating this decision or change? Use clear paragraphs to explain the background.]
 
 ## Decision
-
-[Describe the decision that was made. Be clear about the solution chosen and why it was selected over alternatives.]
+[Describe the decision that was made. Start with "We will..." and be clear about the solution chosen. List key aspects of the decision using numbered points or bullets.]
 
 ## Consequences
 
-[Describe the resulting context after applying the decision. All consequences should be listed, both positive and negative.]
+### Positive
+- **[Benefit 1]**: [Description]
+- **[Benefit 2]**: [Description]
+- **[Benefit 3]**: [Description]
 
-## Alternatives Considered
+### Negative
+- **[Drawback 1]**: [Description]
+- **[Drawback 2]**: [Description]
+- **[Drawback 3]**: [Description]
 
-[Describe the alternatives that were considered and why they were not chosen.]
+## Example
+```typescript
+// Include a concrete code example that demonstrates the decision
+```
+
+## Implementation Notes
+[Optional: Include specific implementation details, configurations, or guidelines]
 
 ## References
-
-[List any references, links, or resources that were helpful in making this decision.]
+- [Reference 1]
+- [Reference 2]

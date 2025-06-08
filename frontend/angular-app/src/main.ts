@@ -28,24 +28,11 @@ if (typeof window !== 'undefined' && typeof navigator !== 'undefined') {
           resourceFetch: true
         }
       },
-      // Fetch instrumentation with enhanced options
       fetch: {
-        enabled: true,
-        // Add custom attributes to spans
-        applyCustomAttributesOnSpan: (span, request, response) => {
-          span.setAttribute('http.request.body.size', request.headers.get('content-length') || 0);
-          if (response) {
-            span.setAttribute('http.response.body.size', response.headers.get('content-length') || 0);
-          }
-        },
-        // Propagate trace headers
-        propagateTraceHeaderCorsUrls: [/.*/],
-        clearTimingResources: true
+        enabled: false
       },
-      // XMLHttpRequest instrumentation
       xmlHttpRequest: {
-        enabled: true,
-        propagateTraceHeaderCorsUrls: [/.*/]
+        enabled: false
       },
       // User interaction instrumentation
       userInteraction: {

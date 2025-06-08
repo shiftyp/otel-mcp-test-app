@@ -1,8 +1,25 @@
 // Services
-export { ITelemetryService, SignalTelemetryOptions, ComputedTelemetryOptions, EffectTelemetryOptions, TelemetryConfig } from './services/telemetry.interface';
+export { 
+  ITelemetryService, 
+  SignalTelemetryOptions, 
+  ComputedTelemetryOptions, 
+  EffectTelemetryOptions, 
+  TelemetryConfig,
+  TracedWritableSignal 
+} from './services/telemetry.interface';
 export { TELEMETRY_SERVICE } from './services/telemetry-service.token';
 export { DefaultTelemetryService } from './services/default-telemetry.service';
-export { ConfigurableTelemetryService } from './services/configurable-telemetry.service';
+export { 
+  ConfigurableTelemetryService,
+  SignalChangeEvent,
+  EffectExecutionEvent,
+  EffectLoopPattern
+} from './services/configurable-telemetry.service';
+export { 
+  ReactiveContextService,
+  SpanContextCarrier,
+  ContextChangeEvent
+} from './services/reactive-context.service';
 
 // API Functions
 export { tracedSignal } from './api/traced-signal';
@@ -24,3 +41,29 @@ export { initializeBrowserTelemetry, BrowserTelemetryConfig } from './browser-in
 
 // Decorators
 export * from './decorators';
+
+// Interceptors
+export { ContextPropagationInterceptor } from './interceptors/context-propagation.interceptor';
+
+// Operators
+export { 
+  withTelemetryContext, 
+  createContextOperator, 
+  propagateContext 
+} from './operators/with-telemetry-context';
+
+// Request-scoped telemetry
+export { 
+  RequestScopedTelemetryService,
+  RequestContext,
+  TelemetryEvent,
+  RequestTelemetryStats,
+  REQUEST_ID
+} from './services/request-scoped-telemetry.service';
+
+// Resource timing
+export {
+  ResourceTimingService,
+  ResourceTimingEvent,
+  ResourceStats
+} from './services/resource-timing.service';

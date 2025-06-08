@@ -393,16 +393,49 @@ providers: [
   {
     provide: 'TELEMETRY_CONFIG',
     useValue: {
+      // Core features
       enableStateTransfer: true,        // SSR state transfer
       enableWebVitals: true,           // Web Vitals monitoring
       enableSmartSampling: true,       // Intelligent sampling
       enableEffectLoopDetection: true, // Detect effect loops
-      enableBatchedMetrics: true,      // Batch metric exports
-      defaultSampleRate: 0.1,
-      serverSampleRateMultiplier: 0.1,
-      metricsFlushInterval: 5000,
+      enableBatchedMetrics: true,      // RxJS-based metric batching
+      
+      // Sampling configuration
+      smartSampling: {
+        baseRate: 0.1,
+        minRate: 0.001,
+        maxRate: 1.0,
+        adaptiveWindow: 10000,
+        importanceThreshold: 1000,
+        budgetPerMinute: 1000,
+        environmentMultipliers: {
+          development: 10,
+          staging: 5,
+          production: 1
+        }
+      },
+      
+      // Metric batching
+      metricBatching: {
+        flushInterval: 5000,
+        maxBatchSize: 100,
+        maxQueueSize: 1000,
+        autoFlushThreshold: 0.8
+      },
+      
+      // Performance thresholds
       slowComputationThreshold: 100,
-      slowEffectThreshold: 100
+      slowEffectThreshold: 100,
+      
+      // Web Vitals
+      webVitalsConfig: {
+        reportAllChanges: false,
+        thresholds: {
+          LCP: 2500,
+          FID: 100,
+          CLS: 0.1
+        }
+      }
     }
   },
   {
@@ -454,15 +487,57 @@ stopTimer({ 'api.endpoint': '/products' });
 
 ### Performance Monitoring
 
-Monitor Web Vitals (automatically enabled with `enableWebVitals`):
+### Web Vitals Integration
+
+Monitor Core Web Vitals with automatic correlation to traces:
 
 ```typescript
-// Metrics automatically collected:
-// - web_vitals_cls (Cumulative Layout Shift)
-// - web_vitals_fid (First Input Delay)
-// - web_vitals_fcp (First Contentful Paint)
+// Automatically collected when enableWebVitals is true:
 // - web_vitals_lcp (Largest Contentful Paint)
+// - web_vitals_fid (First Input Delay) 
+// - web_vitals_cls (Cumulative Layout Shift)
+// - web_vitals_fcp (First Contentful Paint)
 // - web_vitals_ttfb (Time to First Byte)
+// - web_vitals_inp (Interaction to Next Paint)
+
+// Real-time monitoring
+@Component({
+  template: `
+    <div *ngIf="vitals$ | async as vitals" class="vitals-monitor">
+      <div [class.good]="vitals.LCP < 2500" 
+           [class.poor]="vitals.LCP > 4000">
+        LCP: {{ vitals.LCP }}ms
+      </div>
+      <div [class.good]="vitals.CLS < 0.1" 
+           [class.poor]="vitals.CLS > 0.25">
+        CLS: {{ vitals.CLS }}
+      </div>
+    </div>
+  `
+})
+export class VitalsMonitor {
+  vitals$ = this.telemetry.getWebVitals$();
+  
+  constructor(private telemetry: DefaultTelemetryService) {}
+}
+```
+
+### Telemetry Health Monitoring
+
+Monitor the telemetry system itself:
+
+```typescript
+// Sampling statistics
+this.telemetry.getSamplingStats$().subscribe(stats => {
+  console.log(`Sampling rate: ${stats.samplingRate}`);
+  console.log(`Operations tracked: ${stats.byOperation.size}`);
+});
+
+// Metric batching statistics  
+this.telemetry.getMetricStats$().subscribe(stats => {
+  console.log(`Metrics/sec: ${stats.metricsPerSecond}`);
+  console.log(`Buffer utilization: ${stats.bufferSize}/${stats.maxBufferSize}`);
+});
 ```
 
 ## Best Practices
@@ -569,10 +644,21 @@ Enable state transfer in the configurable service:
 
 Detailed architectural decisions are documented in the [ADR directory](./docs/adr/). Key ADRs include:
 
+### Foundation & API Design
 - [ADR-001: Decorator-Based Instrumentation](./docs/adr/001-decorator-based-instrumentation.md) - Foundation decorator approach
+- [ADR-002: Unified @Telemetry Decorator](./docs/adr/002-unified-telemetry-decorator.md) - Namespace management
+- [ADR-005: Imperative/Declarative APIs](./docs/adr/005-imperative-declarative-coexistence.md) - Flexible API design
+
+### Core Implementation
 - [ADR-006: Core Architecture](./docs/adr/006-core-architecture.md) - Service patterns and module structure
 - [ADR-007: SSR Architecture](./docs/adr/007-ssr-architecture.md) - Server-side rendering support
 - [ADR-008: Signal and Effect Tracing](./docs/adr/008-signal-effect-tracing.md) - Reactive primitive instrumentation
+- [ADR-009: Performance Optimization](./docs/adr/009-avoiding-proxy-performance-overhead.md) - Avoiding proxy overhead
+
+### Advanced Features
+- [ADR-010: RxJS Metric Batching](./docs/adr/010-metric-batching-strategy.md) - Sophisticated batching with backpressure
+- [ADR-011: Smart Sampling](./docs/adr/011-smart-sampling-strategy.md) - Adaptive sampling based on importance
+- [ADR-012: Web Vitals Integration](./docs/adr/012-web-vitals-integration.md) - Core Web Vitals as first-class metrics
 
 See the [full ADR index](./docs/adr/) for all architectural decisions.
 

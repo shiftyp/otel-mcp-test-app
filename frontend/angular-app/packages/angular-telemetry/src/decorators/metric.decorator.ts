@@ -124,10 +124,15 @@ export function Metric(
               : options.successMetric;
           }
           
-          // Record the metric
+          // Record the metric with priority
+          const priority = options?.priority || 'normal';
           if (options?.batched && telemetryService.recordBatchedMetric) {
-            telemetryService.recordBatchedMetric(finalMetricName, metricValue, attributes);
+            telemetryService.recordBatchedMetric(finalMetricName, metricValue, attributes, priority);
+          } else if (telemetryService.recordMetric.length >= 4) {
+            // Service supports priority parameter
+            telemetryService.recordMetric(finalMetricName, metricValue, attributes, priority);
           } else {
+            // Fallback for services that don't support priority
             telemetryService.recordMetric(finalMetricName, metricValue, attributes);
           }
           

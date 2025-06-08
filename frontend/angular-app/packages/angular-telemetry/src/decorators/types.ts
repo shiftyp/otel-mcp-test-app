@@ -53,6 +53,8 @@ export interface TracedOptions<TArgs extends any[] = any[], TReturn = any> exten
   recordArgs?: boolean;
   includeArgs?: boolean;
   attributes?: Record<string, any> | ((args: TArgs, result?: TReturn) => Record<string, any>);
+  sampling?: 'smart' | 'fixed';  // Use smart adaptive sampling or fixed rate
+  criticality?: 'normal' | 'critical';  // Mark operation as critical for sampling
 }
 
 /**
@@ -66,6 +68,7 @@ export interface MetricOptions<TArgs extends any[] = any[], TReturn = any> {
   successMetric?: string;
   failureMetric?: string;
   batched?: boolean;
+  priority?: 'high' | 'normal';  // High priority metrics bypass batching
 }
 
 /**

@@ -262,7 +262,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: load-test-results
-          path: load-testing/test-results/
+          path: load-testing/results/
 ```
 
 ## Contributing

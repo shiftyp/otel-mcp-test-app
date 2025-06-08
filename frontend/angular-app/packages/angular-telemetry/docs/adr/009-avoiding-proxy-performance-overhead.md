@@ -1,7 +1,7 @@
 # ADR-009: Avoiding Proxy Performance Overhead in Signal Tracing
 
 ## Status
-Accepted
+Accepted (Enhanced by ADR-013)
 
 ## Context
 The initial implementation of signal tracing used JavaScript's Proxy API to intercept signal operations transparently. While Proxies provide an elegant way to intercept property access and function calls, they come with performance overhead:
@@ -112,3 +112,6 @@ We should monitor Angular RFCs and releases for signal API changes.
 - [MDN Proxy Documentation](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy)
 - [V8 Blog: Optimizing Proxies](https://v8.dev/blog/proxy-performance)
 - [Angular Signals Performance Considerations](https://github.com/angular/angular/discussions/49685)
+
+## Related ADRs
+- [ADR-013](./013-signal-change-tracking-stream.md): Signal Change Tracking Stream - Extends this approach with RxJS observables for change tracking

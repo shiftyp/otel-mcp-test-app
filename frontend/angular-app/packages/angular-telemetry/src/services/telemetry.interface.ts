@@ -1,4 +1,6 @@
 import { Signal, WritableSignal, EffectRef } from '@angular/core';
+import { Observable } from 'rxjs';
+import { SignalChangeEvent } from './configurable-telemetry.service';
 
 export interface SignalTelemetryOptions<T> {
   spanName?: string;
@@ -38,6 +40,44 @@ export interface TelemetryConfig {
   metricsFlushInterval?: number;      // How often to flush metrics (ms)
   slowComputationThreshold?: number;  // Warn when computations exceed this (ms)
   slowEffectThreshold?: number;       // Warn when effects exceed this (ms)
+  
+  // RxJS Metric Batching Configuration
+  metricBatching?: {
+    flushInterval: number;           // Milliseconds between flushes
+    maxBatchSize: number;           // Maximum metrics per batch
+    maxQueueSize: number;           // Maximum queued metrics
+    autoFlushThreshold: number;     // Percentage of maxBatchSize to trigger flush
+  };
+  
+  // Smart Sampling Configuration
+  smartSampling?: {
+    baseRate: number;                    // Base sampling rate (0.0-1.0)
+    minRate: number;                     // Minimum rate (never go below)
+    maxRate: number;                     // Maximum rate (never go above)
+    adaptiveWindow: number;              // Time window for frequency calculation (ms)
+    importanceThreshold: number;         // Duration threshold for "important" operations (ms)
+    budgetPerMinute: number;            // Maximum spans per minute
+    environmentMultipliers: {
+      development: number;              // e.g., 10x in dev
+      staging: number;                  // e.g., 5x in staging
+      production: number;               // e.g., 1x in production
+    };
+  };
+  
+  // Web Vitals Configuration
+  webVitalsConfig?: {
+    reportAllChanges: boolean;      // Report all changes or just final values
+    thresholds: {
+      LCP: number;                  // Largest Contentful Paint threshold (ms)
+      FID: number;                  // First Input Delay threshold (ms)
+      CLS: number;                  // Cumulative Layout Shift threshold
+    };
+  };
+}
+
+// Extended WritableSignal interface with change tracking
+export interface TracedWritableSignal<T> extends WritableSignal<T> {
+  changes$: Observable<SignalChangeEvent<T>>;
 }
 
 export interface ITelemetryService {
@@ -45,7 +85,7 @@ export interface ITelemetryService {
     initialValue: T,
     name: string,
     options?: SignalTelemetryOptions<T>
-  ): WritableSignal<T>;
+  ): TracedWritableSignal<T>;
   
   createTracedComputed<T>(
     computation: () => T,
