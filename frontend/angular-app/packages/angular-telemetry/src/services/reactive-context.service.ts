@@ -94,9 +94,9 @@ export class ReactiveContextService implements OnDestroy {
    * RxJS operator to propagate context through streams
    */
   withContext<T>(): MonoTypeOperatorFunction<T> {
-    return (source$: Observable<T>) => {
+    return (source$: Observable<T>): Observable<T> => {
       return source$.pipe(
-        concatMap(value => {
+        concatMap((value: T) => {
           const currentContext = this.contextSubject$.value;
           
           if (!currentContext) {
@@ -104,7 +104,7 @@ export class ReactiveContextService implements OnDestroy {
           }
           
           // Create a new context with the span context
-          return new Observable(observer => {
+          return new Observable<T>((observer) => {
             // Execute within the context
             const span = trace.getTracer('rxjs').startSpan('stream-operation', {
               attributes: {

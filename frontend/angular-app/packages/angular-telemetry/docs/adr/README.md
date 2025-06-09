@@ -24,6 +24,7 @@ This directory contains Architecture Decision Records (ADRs) for the Angular Tel
 | [ADR-016](./016-request-scoped-telemetry.md) | Request-Scoped Telemetry Stream | Accepted | 2025-06-08 |
 | [ADR-017](./017-resource-timing-integration.md) | Resource Timing Integration | Accepted | 2025-06-08 |
 | [ADR-018](./018-memory-safe-telemetry-buffering.md) | Memory-Safe Telemetry Buffering | Accepted | 2025-06-08 |
+| [ADR-019](./019-preventing-telemetry-export-loops.md) | Preventing Telemetry Export Loops | Accepted | 2025-06-08 |
 
 ## Overview
 

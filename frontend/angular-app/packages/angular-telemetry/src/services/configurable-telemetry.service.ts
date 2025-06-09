@@ -8,9 +8,9 @@ import {
 } from 'rxjs';
 import { 
   bufferWhen, bufferCount, bufferTime, map, filter, scan, 
-  mergeMap, concatMap, retry, catchError, tap, share, 
-  shareReplay, startWith, switchMap, take, takeUntil,
-  distinctUntilChanged, auditTime, mapTo, mergeAll
+  mergeMap, concatMap, retry, catchError, share, 
+  shareReplay, startWith, take, takeUntil,
+  distinctUntilChanged, debounceTime, mergeAll
 } from 'rxjs/operators';
 // Platform detection helpers
 const isPlatformServer = (platformId: Object): boolean => {
@@ -116,7 +116,7 @@ export interface EffectLoopPattern {
 @Injectable()
 export class ConfigurableTelemetryService implements ITelemetryService {
   private isServer: boolean;
-  private config: Required<TelemetryConfig>;
+  private config: TelemetryConfig;
   private signalRegistry?: Map<string, SignalMetadata>;
   private readonly destroy$ = new Subject<void>();
   
@@ -162,7 +162,7 @@ export class ConfigurableTelemetryService implements ITelemetryService {
     this.isServer = isPlatformServer(this.platformId);
     
     // Apply default configuration
-    this.config = {
+    const defaultConfig: TelemetryConfig = {
       enableStateTransfer: false,
       enableWebVitals: false,
       enableSmartSampling: false,
@@ -175,9 +175,43 @@ export class ConfigurableTelemetryService implements ITelemetryService {
       enableLogging: true,
       metricsFlushInterval: 5000,
       slowComputationThreshold: 100,
-      slowEffectThreshold: 100,
-      ...config
+      slowEffectThreshold: 100
     };
+    
+    // Merge with provided config
+    const mergedConfig = { ...defaultConfig, ...config };
+    
+    // Type assertion to Required<TelemetryConfig> after ensuring all defaults
+    this.config = {
+      ...mergedConfig,
+      metricBatching: mergedConfig.metricBatching || {
+        flushInterval: 5000,
+        maxBatchSize: 100,
+        maxQueueSize: 1000,
+        autoFlushThreshold: 0.8
+      },
+      smartSampling: mergedConfig.smartSampling || {
+        baseRate: 0.1,
+        minRate: 0.01,
+        maxRate: 1.0,
+        adaptiveWindow: 60000,
+        importanceThreshold: 100,
+        budgetPerMinute: 1000,
+        environmentMultipliers: {
+          development: 10,
+          staging: 5,
+          production: 1
+        }
+      },
+      webVitalsConfig: mergedConfig.webVitalsConfig || {
+        reportAllChanges: false,
+        thresholds: {
+          LCP: 2500,
+          FID: 100,
+          CLS: 0.1
+        }
+      }
+    } as Required<TelemetryConfig>;
     
     this.initialize();
   }
@@ -427,9 +461,11 @@ export class ConfigurableTelemetryService implements ITelemetryService {
       // Prevent unbounded growth
       if (this.effectCircuitBreakers.size >= this.MAX_EFFECT_TRACKING) {
         const firstKey = this.effectCircuitBreakers.keys().next().value;
-        const firstBreaker = this.effectCircuitBreakers.get(firstKey);
-        firstBreaker?.complete();
-        this.effectCircuitBreakers.delete(firstKey);
+        if (firstKey) {
+          const firstBreaker = this.effectCircuitBreakers.get(firstKey);
+          firstBreaker?.complete();
+          this.effectCircuitBreakers.delete(firstKey);
+        }
       }
       this.effectCircuitBreakers.set(effectName, new BehaviorSubject<'closed' | 'open' | 'half-open'>('closed'));
     }
@@ -551,11 +587,14 @@ export class ConfigurableTelemetryService implements ITelemetryService {
   ): TracedWritableSignal<T> {
     const baseSignal = signal(initialValue);
     const opts = {
-      sampleRate: this.config.defaultSampleRate,
-      recordMetrics: this.config.enableMetrics,
-      skipInitialValue: false,
-      ...options
+      sampleRate: options?.sampleRate ?? this.config.defaultSampleRate,
+      recordMetrics: options?.recordMetrics ?? this.config.enableMetrics,
+      skipInitialValue: options?.skipInitialValue ?? false,
+      spanName: options?.spanName,
+      trackerName: options?.trackerName,
+      attributes: options?.attributes
     };
+    const sampleRate = opts.sampleRate as number;
     
     // Register signal for state transfer if enabled
     let metadata: SignalMetadata | undefined;
@@ -571,8 +610,8 @@ export class ConfigurableTelemetryService implements ITelemetryService {
     }
     
     const effectiveSampleRate = this.isServer 
-      ? opts.sampleRate * this.config.serverSampleRateMultiplier 
-      : opts.sampleRate;
+      ? sampleRate * (this.config.serverSampleRateMultiplier || 0.1)
+      : sampleRate;
     
     const shouldTrace = () => {
       const activeSpan = trace.getActiveSpan();
@@ -631,6 +670,9 @@ export class ConfigurableTelemetryService implements ITelemetryService {
       return span;
     };
     
+    // Store reference to service instance
+    const serviceInstance = this;
+    
     // Create wrapper for signal operations
     const tracedSignal = {
       set: (value: T) => {
@@ -665,26 +707,28 @@ export class ConfigurableTelemetryService implements ITelemetryService {
                 updateCount: metadata.updateCount,
                 timeSinceLastUpdate,
                 hasActiveSpan: !!span,
-                traceId: span?.spanContext().traceId,
-                spanId: span?.spanContext().spanId
+                traceId: span?.spanContext().traceId || undefined,
+                spanId: span?.spanContext().spanId || undefined
               }
             };
             
             // Emit to individual signal stream
-            if (!this.signalChangeStreams.has(name)) {
+            if (!serviceInstance.signalChangeStreams.has(name)) {
               // Prevent unbounded growth - remove oldest if at limit
-              if (this.signalChangeStreams.size >= this.MAX_SIGNAL_STREAMS) {
-                const firstKey = this.signalChangeStreams.keys().next().value;
-                const firstStream = this.signalChangeStreams.get(firstKey);
-                firstStream?.complete();
-                this.signalChangeStreams.delete(firstKey);
+              if (serviceInstance.signalChangeStreams.size >= serviceInstance.MAX_SIGNAL_STREAMS) {
+                const firstKey = serviceInstance.signalChangeStreams.keys().next().value;
+                if (firstKey) {
+                  const firstStream = serviceInstance.signalChangeStreams.get(firstKey);
+                  firstStream?.complete();
+                  serviceInstance.signalChangeStreams.delete(firstKey);
+                }
               }
-              this.signalChangeStreams.set(name, new Subject<SignalChangeEvent>());
+              serviceInstance.signalChangeStreams.set(name, new Subject<SignalChangeEvent>());
             }
-            this.signalChangeStreams.get(name)!.next(changeEvent);
+            serviceInstance.signalChangeStreams.get(name)!.next(changeEvent);
             
             // Emit to global stream
-            this.signalChanges$.next(changeEvent);
+            serviceInstance.signalChanges$.next(changeEvent);
           }
           
           if (span) {
@@ -748,17 +792,17 @@ export class ConfigurableTelemetryService implements ITelemetryService {
                 updateCount: metadata.updateCount,
                 timeSinceLastUpdate,
                 hasActiveSpan: !!span,
-                traceId: span?.spanContext().traceId,
-                spanId: span?.spanContext().spanId
+                traceId: span?.spanContext().traceId || undefined,
+                spanId: span?.spanContext().spanId || undefined
               }
             };
             
             // Emit to streams
-            if (!this.signalChangeStreams.has(name)) {
-              this.signalChangeStreams.set(name, new Subject<SignalChangeEvent>());
+            if (!serviceInstance.signalChangeStreams.has(name)) {
+              serviceInstance.signalChangeStreams.set(name, new Subject<SignalChangeEvent>());
             }
-            this.signalChangeStreams.get(name)!.next(changeEvent);
-            this.signalChanges$.next(changeEvent);
+            serviceInstance.signalChangeStreams.get(name)!.next(changeEvent);
+            serviceInstance.signalChanges$.next(changeEvent);
           }
           
           span?.setStatus({ code: SpanStatusCode.OK });
@@ -776,12 +820,12 @@ export class ConfigurableTelemetryService implements ITelemetryService {
       asReadonly: () => baseSignal.asReadonly(),
       
       // Add change stream observable
-      get changes$(): Observable<SignalChangeEvent<T>> {
-        if (!this.signalChangeStreams.has(name)) {
-          this.signalChangeStreams.set(name, new Subject<SignalChangeEvent>());
+      changes$: (() => {
+        if (!serviceInstance.signalChangeStreams.has(name)) {
+          serviceInstance.signalChangeStreams.set(name, new Subject<SignalChangeEvent>());
         }
-        return this.signalChangeStreams.get(name)!.asObservable();
-      }
+        return serviceInstance.signalChangeStreams.get(name)!.asObservable();
+      })()
     };
     
     // Create a wrapped signal that intercepts read operations
@@ -825,16 +869,19 @@ export class ConfigurableTelemetryService implements ITelemetryService {
     options?: ComputedTelemetryOptions<T>
   ): Signal<T> {
     const opts = {
-      sampleRate: this.config.defaultSampleRate,
-      recordMetrics: this.config.enableMetrics,
-      warnOnSlowComputation: this.config.slowComputationThreshold,
-      trackDependencies: false,
-      ...options
+      sampleRate: options?.sampleRate ?? this.config.defaultSampleRate,
+      recordMetrics: options?.recordMetrics ?? this.config.enableMetrics,
+      warnOnSlowComputation: options?.warnOnSlowComputation ?? this.config.slowComputationThreshold,
+      trackDependencies: options?.trackDependencies ?? false,
+      spanName: options?.spanName,
+      trackerName: options?.trackerName,
+      attributes: options?.attributes
     };
+    const sampleRate = opts.sampleRate as number;
     
     const effectiveSampleRate = this.isServer 
-      ? opts.sampleRate * this.config.serverSampleRateMultiplier 
-      : opts.sampleRate;
+      ? sampleRate * (this.config.serverSampleRateMultiplier || 0.1) 
+      : sampleRate;
     
     return computed(() => {
       if (opts.recordMetrics) {
@@ -910,14 +957,16 @@ export class ConfigurableTelemetryService implements ITelemetryService {
     options?: EffectTelemetryOptions
   ): EffectRef {
     const opts = {
-      sampleRate: this.config.defaultSampleRate,
-      warnOnSlowEffect: this.config.slowEffectThreshold,
-      ...options
+      sampleRate: options?.sampleRate ?? this.config.defaultSampleRate,
+      warnOnSlowEffect: options?.warnOnSlowEffect ?? this.config.slowEffectThreshold,
+      spanName: options?.spanName,
+      attributes: options?.attributes
     };
+    const sampleRate = opts.sampleRate as number;
     
     const effectiveSampleRate = this.isServer 
-      ? opts.sampleRate * this.config.serverSampleRateMultiplier 
-      : opts.sampleRate;
+      ? sampleRate * (this.config.serverSampleRateMultiplier || 0.1) 
+      : sampleRate;
     
     let executionCount = 0;
     let lastExecutionTime = 0;
@@ -928,12 +977,14 @@ export class ConfigurableTelemetryService implements ITelemetryService {
       if (this.effectMetadata.size >= this.MAX_EFFECT_TRACKING) {
         // Remove oldest entry (first in iteration order)
         const firstKey = this.effectMetadata.keys().next().value;
-        this.effectMetadata.delete(firstKey);
-        
-        // Also clean up related circuit breaker
-        const breaker = this.effectCircuitBreakers.get(firstKey);
-        breaker?.complete();
-        this.effectCircuitBreakers.delete(firstKey);
+        if (firstKey) {
+          this.effectMetadata.delete(firstKey);
+          
+          // Also clean up related circuit breaker
+          const breaker = this.effectCircuitBreakers.get(firstKey);
+          breaker?.complete();
+          this.effectCircuitBreakers.delete(firstKey);
+        }
       }
       this.effectMetadata.set(name, { count: 0, lastExecution: 0 });
     }
@@ -1314,10 +1365,10 @@ export class ConfigurableTelemetryService implements ITelemetryService {
   // Smart sampling implementation
   private shouldSampleOperation(operationName: string, attributes: Record<string, any>): boolean {
     if (!this.config.enableSmartSampling || !this.config.smartSampling) {
-      return Math.random() < this.config.defaultSampleRate;
+      return Math.random() < (this.config.defaultSampleRate || 0.1);
     }
     
-    const samplingConfig = this.config.smartSampling;
+    const samplingConfig = this.config.smartSampling!;
     
     // Priority 1: Always sample errors and critical operations
     if (attributes['error'] === true || 
@@ -1380,10 +1431,11 @@ export class ConfigurableTelemetryService implements ITelemetryService {
     
     // In a real implementation, we'd calculate frequency from the stream
     // For now, return a simple estimate based on operation count
-    return this.operationStreams.get(operationName)!.observers.length;
+    // Note: observers is deprecated but we'll use it for now
+    return (this.operationStreams.get(operationName)! as any).observers?.length || 0;
   }
   
-  private recordSamplingDecision(spanName: string, sampled: boolean, reason: string): void {
+  private recordSamplingDecision(spanName: string, sampled: boolean, _reason: string): void {
     this.samplingDecisions$.next({
       spanName,
       sampled,

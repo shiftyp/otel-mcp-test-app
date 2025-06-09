@@ -1,13 +1,13 @@
 import { Injectable, InjectionToken, OnDestroy } from '@angular/core';
 import { 
   Observable, Subject, BehaviorSubject, race, timer, EMPTY,
-  merge, combineLatest
+  combineLatest
 } from 'rxjs';
 import { 
-  map, filter, scan, takeUntil, finalize, shareReplay,
+  map, takeUntil, finalize, shareReplay,
   debounceTime, distinctUntilChanged
 } from 'rxjs/operators';
-import { v4 as uuidv4 } from 'uuid';
+// uuid not needed - using custom ID generation
 
 export const REQUEST_ID = new InjectionToken<string>('REQUEST_ID');
 
@@ -61,7 +61,9 @@ export class RequestScopedTelemetryService implements OnDestroy {
     if (this.requestStreams.size >= this.MAX_CONCURRENT_REQUESTS) {
       // Clean up oldest request
       const oldestKey = this.requestStreams.keys().next().value;
-      this.endRequest(oldestKey);
+      if (oldestKey !== undefined) {
+        this.endRequest(oldestKey);
+      }
     }
     
     const fullContext: RequestContext = {
@@ -281,7 +283,7 @@ export class RequestScopedTelemetryService implements OnDestroy {
    * Generate unique request ID
    */
   private generateRequestId(): string {
-    return `req-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `req-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
   }
   
   ngOnDestroy(): void {

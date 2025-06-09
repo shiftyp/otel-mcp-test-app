@@ -7,6 +7,18 @@ import { TelemetryService } from '../services/telemetry.service';
 import { throwError } from 'rxjs';
 
 export const tracingInterceptor: HttpInterceptorFn = (req, next) => {
+  // Skip telemetry export requests to prevent infinite loops
+  const url = req.url.toLowerCase();
+  if (url.includes('/v1/traces') || 
+      url.includes('/v1/metrics') || 
+      url.includes('/v1/logs') ||
+      url.includes(':4317') || 
+      url.includes(':4318') ||
+      url.includes('otel-collector') ||
+      url.includes('opentelemetry-collector')) {
+    return next(req);
+  }
+  
   const telemetryService = inject(TelemetryService);
   const platformId = inject(PLATFORM_ID);
   const tracer = trace.getTracer('http-interceptor');

@@ -116,7 +116,7 @@ export function createContextOperator(contextService: ReactiveContextService) {
 export function propagateContext<T>(
   contextService: ReactiveContextService
 ): MonoTypeOperatorFunction<T> {
-  return (source$: Observable<T>) => {
+  return (source$: Observable<T>): Observable<T> => {
     return defer(() => {
       // Capture current context
       const activeSpan = trace.getActiveSpan();
@@ -126,7 +126,7 @@ export function propagateContext<T>(
       
       const currentContext = trace.setSpan(context.active(), activeSpan);
       
-      return new Observable(subscriber => {
+      return new Observable<T>(subscriber => {
         // Subscribe within the captured context
         return context.with(currentContext, () => {
           return source$.subscribe(subscriber);

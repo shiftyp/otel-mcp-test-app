@@ -14,7 +14,7 @@ function getTelemetryService(): ITelemetryService {
     if (!defaultServiceInstance) {
       defaultServiceInstance = new DefaultTelemetryService();
     }
-    return defaultServiceInstance;
+    return defaultServiceInstance!;
   }
 }
 

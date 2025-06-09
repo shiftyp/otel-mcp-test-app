@@ -28,7 +28,44 @@ import { trace, Span } from '@opentelemetry/api';
 export class ContextPropagationInterceptor implements HttpInterceptor {
   constructor(private contextService: ReactiveContextService) {}
 
+  /**
+   * Check if this is a telemetry export request to prevent infinite loops
+   */
+  private isTelemetryExportRequest(request: HttpRequest<unknown>): boolean {
+    const url = request.url.toLowerCase();
+    
+    // Check for OTLP endpoints
+    if (url.includes('/v1/traces') || 
+        url.includes('/v1/metrics') || 
+        url.includes('/v1/logs')) {
+      return true;
+    }
+    
+    // Check for common collector ports
+    if (url.includes(':4317') || // gRPC port
+        url.includes(':4318') || // HTTP port
+        url.includes(':55679')) { // Legacy Jaeger port
+      return true;
+    }
+    
+    // Check for common collector hostnames
+    if (url.includes('otel-collector') ||
+        url.includes('opentelemetry-collector') ||
+        url.includes('jaeger') ||
+        url.includes('tempo') ||
+        url.includes('zipkin')) {
+      return true;
+    }
+    
+    return false;
+  }
+
   intercept(request: HttpRequest<unknown>, next: HttpHandler): Observable<HttpEvent<unknown>> {
+    // Skip telemetry export requests to prevent infinite loops
+    if (this.isTelemetryExportRequest(request)) {
+      return next.handle(request);
+    }
+    
     // Get current context
     return this.contextService.getCurrentContext$().pipe(
       take(1),
@@ -61,9 +98,9 @@ export class ContextPropagationInterceptor implements HttpInterceptor {
         // Check if there's already an active span (from auto-instrumentation)
         const existingSpan = trace.getActiveSpan();
         const isAutoInstrumented = existingSpan?.spanContext().spanId && 
-                                  existingSpan.spanContext().traceId &&
-                                  (existingSpan.attributes?.['http.method'] || 
-                                   existingSpan.attributes?.['http.url']);
+                                  existingSpan.spanContext().traceId;
+        // Note: We can't check attributes directly on span object, 
+        // so we just check if there's an active span with valid context
         
         // Only create a span if there isn't already HTTP instrumentation
         let span: Span | null = null;
@@ -109,9 +146,10 @@ export class ContextPropagationInterceptor implements HttpInterceptor {
                 // Extract context from response headers if present
                 const responseTraceparent = event.headers.get('traceparent');
                 if (responseTraceparent) {
+                  const responseTracestate = event.headers.get('tracestate');
                   const responseContext = this.contextService.extractFromHeaders({
                     traceparent: responseTraceparent,
-                    tracestate: event.headers.get('tracestate') || undefined
+                    ...(responseTracestate && { tracestate: responseTracestate })
                   });
                   
                   if (responseContext) {

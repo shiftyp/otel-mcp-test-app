@@ -1,5 +1,5 @@
-import { WritableSignal, inject } from '@angular/core';
-import { ITelemetryService, SignalTelemetryOptions } from '../services/telemetry.interface';
+import { inject } from '@angular/core';
+import { ITelemetryService, SignalTelemetryOptions, TracedWritableSignal } from '../services/telemetry.interface';
 import { TELEMETRY_SERVICE } from '../services/telemetry-service.token';
 import { DefaultTelemetryService } from '../services/default-telemetry.service';
 
@@ -14,7 +14,7 @@ function getTelemetryService(): ITelemetryService {
     if (!defaultServiceInstance) {
       defaultServiceInstance = new DefaultTelemetryService();
     }
-    return defaultServiceInstance;
+    return defaultServiceInstance!;
   }
 }
 
@@ -39,7 +39,7 @@ export function tracedSignal<T>(
   initialValue: T,
   name: string,
   options?: SignalTelemetryOptions<T>
-): WritableSignal<T> {
+): TracedWritableSignal<T> {
   const service = getTelemetryService();
   return service.createTracedSignal(initialValue, name, options);
 }

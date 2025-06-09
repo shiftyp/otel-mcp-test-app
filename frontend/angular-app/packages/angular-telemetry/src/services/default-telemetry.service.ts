@@ -1,4 +1,5 @@
-import { signal, computed, effect, Signal, WritableSignal, EffectRef, Injectable, PLATFORM_ID, Inject, Optional } from '@angular/core';
+import { signal, computed, effect, Signal, EffectRef, Injectable, PLATFORM_ID, Inject, Optional } from '@angular/core';
+import { Subject } from 'rxjs';
 // Platform detection helper
 const isPlatformServer = (platformId: Object): boolean => {
   return platformId === 'server';
@@ -8,10 +9,9 @@ import {
   ITelemetryService, 
   SignalTelemetryOptions, 
   ComputedTelemetryOptions, 
-  EffectTelemetryOptions 
+  EffectTelemetryOptions,
+  TracedWritableSignal 
 } from './telemetry.interface';
-import { NONAME } from 'node:dns/promises';
-import { AttributeNames } from '@opentelemetry/instrumentation-user-interaction';
 
 class MetricsAggregator {
   private counters = new Map<string, { labels: any, count: number }>();
@@ -29,7 +29,7 @@ class MetricsAggregator {
   
   private flush() {
     const counter = this.meter.createCounter('signal_operations_total');
-    this.counters.forEach(({ count, labels }, name) => {
+    this.counters.forEach(({ count, labels }) => {
       counter.add(count, labels);
     });
     this.counters.clear();
@@ -58,7 +58,7 @@ export class DefaultTelemetryService implements ITelemetryService {
     initialValue: T,
     name: string,
     options?: SignalTelemetryOptions<T>
-  ): WritableSignal<T> {
+  ): TracedWritableSignal<T> {
     const baseSignal = signal(initialValue);
     const opts = {
       sampleRate: 0.1,
@@ -192,7 +192,58 @@ export class DefaultTelemetryService implements ITelemetryService {
       }
     );
     
-    return tracedSignal as WritableSignal<T>;
+    // Create a changes subject for this signal
+    const changesSubject = new Subject<any>();
+    
+    // Add the changes$ property to the traced signal
+    (tracedSignal as any).changes$ = changesSubject.asObservable();
+    
+    // Modify the set method to emit changes
+    const originalSet = tracedSignal.set;
+    tracedSignal.set = (value: T) => {
+      const previousValue = baseSignal();
+      originalSet(value);
+      // Emit change event
+      changesSubject.next({
+        signalName: name,
+        previousValue,
+        currentValue: value,
+        timestamp: Date.now(),
+        source: 'direct',
+        metadata: {
+          updateCount: 0, // Would need to track this
+          timeSinceLastUpdate: 0, // Would need to track this
+          hasActiveSpan: !!trace.getActiveSpan(),
+          traceId: trace.getActiveSpan()?.spanContext().traceId,
+          spanId: trace.getActiveSpan()?.spanContext().spanId
+        }
+      });
+    };
+    
+    // Modify the update method to emit changes
+    const originalUpdate = tracedSignal.update;
+    tracedSignal.update = (updateFn: (value: T) => T) => {
+      const previousValue = baseSignal();
+      originalUpdate(updateFn);
+      const currentValue = baseSignal();
+      // Emit change event
+      changesSubject.next({
+        signalName: name,
+        previousValue,
+        currentValue,
+        timestamp: Date.now(),
+        source: 'direct',
+        metadata: {
+          updateCount: 0, // Would need to track this
+          timeSinceLastUpdate: 0, // Would need to track this
+          hasActiveSpan: !!trace.getActiveSpan(),
+          traceId: trace.getActiveSpan()?.spanContext().traceId,
+          spanId: trace.getActiveSpan()?.spanContext().spanId
+        }
+      });
+    };
+    
+    return tracedSignal as TracedWritableSignal<T>;
   }
   
   createTracedComputed<T>(
